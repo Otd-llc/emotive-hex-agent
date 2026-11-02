@@ -10,6 +10,7 @@
  * @class Core3DManager
  */
 
+import { readLook, writeLook } from './presets/looks.js';
 import * as THREE from 'three';
 import { ThreeRenderer } from './ThreeRenderer.js';
 import { assertAssetBasePath } from './utils/assetBasePath.js';
@@ -75,7 +76,7 @@ export class Core3DManager {
      * @param {number} [options.autoRotateSpeed=0.5] - Auto-rotate speed
      * @param {boolean} [options.enableBlinking=true] - Enable blinking animation
      * @param {boolean} [options.enableBreathing=true] - Enable breathing animation
-     * @param {number} [options.cameraDistance=3] - Camera Z distance from origin
+     * @param {number} [options.cameraDistance=1.3] - Camera Z distance from origin
      * @param {number} [options.fov=45] - Camera field of view in degrees
      * @param {number} [options.minZoom] - Minimum zoom distance
      * @param {number} [options.maxZoom] - Maximum zoom distance
@@ -126,7 +127,7 @@ export class Core3DManager {
 
         // Initialize Three.js renderer
         this.renderer = new ThreeRenderer(canvas, {
-            cameraDistance: options.cameraDistance, // Camera Z distance (undefined = default 3)
+            cameraDistance: options.cameraDistance, // Camera Z distance (undefined = default 1.3)
             fov: options.fov, // Field of view (undefined = default 45)
             maxPixelRatio: options.maxPixelRatio, // DPR cap (undefined = default 2.0)
             debugShaders: options.debugShaders === true, // sync shader error checks (gates)
@@ -993,6 +994,18 @@ export class Core3DManager {
     }
 
     /**
+     * Ramp the crystal's look uniforms (presets/looks.js) to `look` over `ms`.
+     * @param {Object} look - a LOOKS entry
+     * @param {number} ms
+     */
+    setLookUniforms(look, ms) {
+        const u = this.customMaterial?.uniforms;
+        if (!u) return;
+        this._lookTarget = look;
+        this._lookRamp = { from: readLook(u), to: look, ms: Math.max(1, ms), t: 0 };
+    }
+
+    /**
      * Shrink to scale 0 (mirror of growIn) and stay hidden until growIn.
      * @param {number} [duration=500]
      */
@@ -1782,6 +1795,14 @@ export class Core3DManager {
                     const e = gr.t * gr.t * (3 - 2 * gr.t);
                     this.customMaterial.uniforms.uGlow.value = gr.from + (gr.to - gr.from) * e;
                     if (gr.t >= 1) this._glowRamp = null;
+                }
+
+                // Look ramp (setLook)
+                const lr = this._lookRamp;
+                if (lr) {
+                    lr.t = Math.min(1, lr.t + deltaTime / lr.ms);
+                    writeLook(this.customMaterial.uniforms, lr.to, lr.from, lr.t * lr.t * (3 - 2 * lr.t));
+                    if (lr.t >= 1) this._lookRamp = null;
                 }
 
                 // Update glow intensity - respects coreGlowEnabled toggle

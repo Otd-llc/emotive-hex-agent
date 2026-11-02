@@ -3,7 +3,7 @@
  *
  * Derived from the Emotive Engine 3D mascot (MIT, Joshua Tollette). This edition keeps only
  * what the hex agent uses: one WebGL canvas, the crystal + soul, emotions/undertones, the
- * curated gestures, morphTo, SSS gem presets and setSurface. No 2D canvas or 2D particle
+ * curated gestures, morphTo, SSS gem presets, looks (setLook) and setSurface. No 2D canvas or 2D particle
  * overlay, no audio/rhythm/dance, no feel() phrase parser, no eclipse, no camera controls,
  * no element positioning helpers.
  *
@@ -16,6 +16,7 @@ import { EventManager } from '../core/events/EventManager.js';
 import { listEmotions, hasEmotion } from '../core/emotions/index.js';
 import { getGesture, listGestures } from '../core/gestures/index.js';
 import { applySSSPreset as applySSS, SSSPresets, BASE_GEM, GEM_SHIFT_MIN_MS } from './presets/SSSPresets.js';
+import { LOOKS, BASE_LOOK, writeLook } from './presets/looks.js';
 import { ResizeObserverManager } from './managers/ResizeObserverManager.js';
 import { setSurface } from './materials/surface.js';
 import { FRAME_TIMING, ACCESSIBILITY } from '../core/config/defaults.js';
@@ -49,6 +50,7 @@ export class EmotiveMascot3D {
      * @param {string} [config.defaultEmotion='neutral']
      * @param {string} config.assetBasePath - base URL of the agent assets (GLBs + detail map)
      * @param {'dark'|'light'} [config.surface] - what the transparent canvas sits on
+     * @param {string} [config.look='sapphire'] - starting look (LOOKS: sapphire, quartz, ruby-violet)
      */
     constructor(config = {}) {
         assertAssetBasePath(config.assetBasePath);
@@ -614,32 +616,84 @@ export class EmotiveMascot3D {
     _wireCore() {
         const core = this.core3D;
         if (!core) return;
-        this._currentSSSPreset = BASE_GEM;
-        core._targetSSSValues = { ...SSSPresets[BASE_GEM] };
+        this._look = LOOKS[this.config?.look] ? this.config.look : BASE_LOOK;
+        this._baseGem = LOOKS[this._look].gem;
+        this._currentSSSPreset = this._baseGem;
+        core._targetSSSValues = { ...SSSPresets[this._baseGem] };
         core._sssTransitionProgress = 1;
+        core._lookTarget = LOOKS[this._look];
         core.onMaterialSwap = () => {
             if (this._currentSSSPreset) applySSS(this, this._currentSSSPreset);
+            const u = core.customMaterial?.uniforms;
+            if (u && core._lookTarget) {
+                core._lookRamp = null;
+                writeLook(u, core._lookTarget);
+            }
         };
+        // A non-base starting look: applied as soon as the first material exists.
+        if (this._look !== BASE_LOOK || this._baseGem !== BASE_GEM) {
+            core.waitUntilReady?.().then(() => {
+                if (!this.core3D?.customMaterial?.uniforms) return;
+                applySSS(this, this._currentSSSPreset);
+                writeLook(this.core3D.customMaterial.uniforms, core._lookTarget);
+            });
+        }
+    }
+
+    /**
+     * Switch the crystal's look (LOOKS) over `ms`: its gem, glass and core. Never faster than
+     * GEM_SHIFT_MIN_MS (flash safety). A running gem shift (e.g. the refusal ruby) is replaced;
+     * setGemColor(null) returns to the new look's gem from now on.
+     * @param {string} name - sapphire | quartz | ruby-violet
+     * @param {number} [ms=GEM_SHIFT_MIN_MS]
+     * @returns {boolean} false for an unknown look (nothing changes)
+     */
+    setLook(name, ms = GEM_SHIFT_MIN_MS) {
+        const look = LOOKS[name];
+        if (!look || !this.core3D) return false;
+        if (!this.core3D.onMaterialSwap) this._wireCore();
+        const durationMs = Math.max(GEM_SHIFT_MIN_MS, Number(ms) || 0);
+        this._look = name;
+        this._baseGem = look.gem;
+        this.core3D.setLookUniforms?.(look, durationMs);
+        this.core3D._lookTarget = look;
+        this.setGemColor(look.gem, durationMs);
+        this.eventManager.emit('look:change', { look: name, durationMs });
+        return true;
+    }
+
+    /** @returns {string} the current (or target) look */
+    getLook() {
+        return this._look ?? BASE_LOOK;
+    }
+
+    /** @returns {string[]} look names setLook accepts */
+    getAvailableLooks() {
+        return Object.keys(LOOKS);
     }
 
     /**
      * Shift the gem colour to a preset over `ms` (never faster than GEM_SHIFT_MIN_MS, a flash
-     * safety rule), or back to the base gem with `preset = null`.
+     * safety rule), or back to the current look's gem with `preset = null`.
      * @param {string|null} preset - SSSPresets name, or null for the base gem
      * @param {number} [ms=GEM_SHIFT_MIN_MS]
      * @returns {boolean} false for an unknown preset (nothing changes)
      */
     setGemColor(preset, ms = GEM_SHIFT_MIN_MS) {
-        const name = preset ?? BASE_GEM;
+        const name = preset ?? this._baseGem ?? BASE_GEM;
         if (!SSSPresets[name] || !this.core3D) return false;
         const durationMs = Math.max(GEM_SHIFT_MIN_MS, Number(ms) || 0);
         this.core3D._sssTransitionDurationMs = durationMs;
+        // Off the look's own gem (e.g. the refusal ruby) the core follows the gem's hue; back on
+        // it, the look's core returns. Same duration, so it is one shift.
+        const look = LOOKS[this._look ?? BASE_LOOK];
+        if (look) this.core3D.setLookUniforms?.(name === look.gem ? look : { ...look, uCoreMix: 0 }, durationMs);
         return this.setSSSPreset(name, { durationMs });
     }
 
     /** @returns {string} the current (or target) gem preset */
     getGemColor() {
-        return this._currentSSSPreset ?? BASE_GEM;
+        return this._currentSSSPreset ?? this._baseGem ?? BASE_GEM;
     }
 
     /**
