@@ -158,6 +158,8 @@ const vec3 LUM = vec3(0.2126, 0.7152, 0.0722);
 vec3 studio(vec3 d) {
     float sky = smoothstep(-0.5, 0.9, d.y);
     vec3 c = mix(vec3(0.03, 0.035, 0.05), vec3(0.20, 0.22, 0.27), sky);
+    // A light page is a bright room: the studio's ambient lifts toward the cream it sits in.
+    c = mix(c, vec3(0.62, 0.61, 0.58) * (0.6 + 0.4 * sky), uSurface * 0.55);
     float key = smoothstep(-0.80, -0.74, d.x) * (1.0 - smoothstep(-0.16, -0.10, d.x))
               * smoothstep(0.28, 0.34, d.y) * (1.0 - smoothstep(0.90, 0.96, d.y));
     float strip = smoothstep(0.52, 0.56, d.x) * (1.0 - smoothstep(0.74, 0.78, d.x))
@@ -178,7 +180,7 @@ void main() {
     float ts = textureStrength;
 
     // Micro normal from the noise channel (B): breaks perfect mirror flats a little.
-    vec3 Nm = normalize(N + vec3(det.b - 0.5, 0.5 - det.b, 0.0) * 0.10 * ts);
+    vec3 Nm = normalize(N + vec3(det.b - 0.5, 0.5 - det.b, 0.0) * 0.06 * ts);
     float NdV = clamp(abs(dot(Nm, V)), 0.0, 1.0);
 
     // Gem hue from the preset (normalised absorption), as before; it lerps with setGemColor.
@@ -205,7 +207,7 @@ void main() {
     float sector = atan(ex.z, ex.x) / 1.0471976;
     float th = (floor(sector) + 0.5) * 1.0471976;
     float tip = smoothstep(0.30, 0.45, abs(ex.y)) * sign(ex.y);
-    vec3 nb = normalize(vec3(cos(th), tip * 1.3, sin(th)) + vec3(det.g - 0.35) * 0.25 * ts);
+    vec3 nb = normalize(vec3(cos(th), tip * 1.3, sin(th)) + vec3(det.g - 0.35) * 0.02 * ts);
     vec3 bo = reflect(d, -nb);
     vec3 brill = studio(normalize(bo.x * vNX + bo.y * vNY + bo.z * vNZ)) * (0.8 + 0.4 * det.b);
     // The back edges (between flats) show through as fine lines.

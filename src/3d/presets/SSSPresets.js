@@ -51,15 +51,15 @@ export const SSSPresets = {
     },
     // The ruby-violet look (C): a deep wine-violet between ruby and amethyst.
     'ruby-violet': {
-        sssStrength: 2.0,
-        sssAbsorption: [3.0, 0.2, 2.5],
+        sssStrength: 2.6,
+        sssAbsorption: [3.0, 0.15, 2.4],
         sssScatterDistance: [0.4, 0.05, 0.4],
         sssThicknessBias: 0.68,
         sssThicknessScale: 1.9,
         sssCurvatureScale: 2.8,
         sssAmbient: 0.08,
         frostiness: 0.1,
-        innerGlowStrength: 0.8,
+        innerGlowStrength: 0.6,
         fresnelIntensity: 1.3,
         causticIntensity: 1.0,
         emotionColorBleed: 0.2,
