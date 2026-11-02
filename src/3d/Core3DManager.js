@@ -11,6 +11,11 @@
  */
 
 import { readLook, writeLook } from './presets/looks.js';
+
+/** Emotion colour shift of the core, minimum duration (flash safety, as GEM_SHIFT_MIN_MS). */
+export const CORE_SHIFT_MIN_MS = 600;
+/** Core glow at rest, relative to the emotion's base glow (the cut-glass tuning point). */
+export const CORE_REST_GLOW = 1.2;
 import * as THREE from 'three';
 import { ThreeRenderer } from './ThreeRenderer.js';
 import { assertAssetBasePath } from './utils/assetBasePath.js';
@@ -1806,19 +1811,26 @@ export class Core3DManager {
                 }
 
                 // Update glow intensity - respects coreGlowEnabled toggle
+                // The core's colour is the emotion's own (uEmotion) and the shader lifts dark hues
+                // to a common lightness, so the stock per-colour boost (getGlowIntensityForColor,
+                // 0.6 to 4.4, a step at every emotion change) must not reach it: only what the
+                // gestures and blinks do on top of the emotion's base does.
                 if (this.customMaterial.uniforms.glowIntensity) {
-                    this.customMaterial.uniforms.glowIntensity.value = effectiveGlowIntensity;
+                    const base = Math.max(this.baseGlowIntensity || 1, 0.01);
+                    this.customMaterial.uniforms.glowIntensity.value =
+                        (effectiveGlowIntensity / base) * CORE_REST_GLOW;
                 }
 
                 // Smooth color transition between emotions
                 // Lerp from start color to target over ~500ms (configurable via colorTransitionDuration)
                 if (this._targetGlowColor && this._colorTransitionProgress < 1) {
-                    const transitionDuration = this.colorTransitionDuration || 500; // ms
+                    // The core carries this colour: never faster than CORE_SHIFT_MIN_MS (flash
+                    // safety), eased both ends.
+                    const transitionDuration = Math.max(this.colorTransitionDuration || 0, CORE_SHIFT_MIN_MS);
                     this._colorTransitionProgress += deltaTime / transitionDuration;
                     this._colorTransitionProgress = Math.min(this._colorTransitionProgress, 1);
-
-                    // Ease-out curve for smooth deceleration
-                    const tColor = 1 - Math.pow(1 - this._colorTransitionProgress, 2);
+                    const pc = this._colorTransitionProgress;
+                    const tColor = pc * pc * (3 - 2 * pc);
 
                     // Lerp each channel
                     const start = this._colorTransitionStart ||

@@ -111,6 +111,7 @@ uniform float uBody;           // body light floor (keeps a deep stone from goin
 uniform float uDepth;          // optical path scale (colour depth)
 uniform vec3 uCore;            // core colour
 uniform float uCoreMix;        // 0 = core follows the gem hue, 1 = pure uCore
+uniform float uEmotion;        // 0 = the look's core, 1 = the current emotion's colour
 uniform float uClarity;        // 0 = solid stone, 1 = clear glass (page shows through)
 
 uniform float frostiness;
@@ -225,8 +226,13 @@ void main() {
     float coreMask = exp(-r2 * 90.0);
     float halo = exp(-r2 * 28.0);
     float pulse = 0.9 + 0.1 * sin(time * 0.8);
-    vec3 coreHue = mix(hue, uCore, uCoreMix);
-    coreHue = mix(coreHue, emotionColor, emotionColorBleed * 0.35);
+    // The emotion drives the core (uEmotion), the body stays the look's stone. Its colour comes
+    // in luminance-normalised; take the full-chroma hue and lift dark hues (violet, royal blue)
+    // to a common lightness, so no emotion dims the core or the gem.
+    vec3 emo = emotionColor / max(max(max(emotionColor.r, emotionColor.g), emotionColor.b), 0.001);
+    emo = max(mix(vec3(dot(emo, LUM)), emo, 1.35), 0.0); // pale hues (euphoria pink) still read
+    emo *= clamp(0.62 / max(dot(emo, LUM), 0.05), 1.0, 2.6);
+    vec3 coreHue = mix(mix(hue, uCore, uCoreMix), emo, uEmotion);
     float glow = uGlow * glowIntensity * innerGlowStrength;
     vec3 core = (coreHue * (coreMask * 1.5 + halo * 0.35) + vec3(coreMask * coreMask * 0.3)) * pulse * glow;
 

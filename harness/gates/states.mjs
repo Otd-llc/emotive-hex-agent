@@ -7,8 +7,14 @@
  *  - the gem's mean luminance delta against the field (central gem window) is above a floor
  *    on BOTH surfaces, so a dark gem that still moves FAILS;
  *  - morphing to and from every picked shape keeps the crystal family (flag + crystal shader),
- *    the soul, and the luminance floor on both surfaces for each shape.
- * Usage: node harness/gates/states.mjs [--plant-rename-shock | --plant-dark-gem | --plant-unflag]
+ *    the soul, and the luminance floor on both surfaces for each shape;
+ *  - EMOTION LEGS: every emotion the engine keeps (getAvailableEmotions) drives the core, and
+ *    the gem stays above the same luminance floor on both surfaces in each one, so no emotion
+ *    colour may darken the gem.
+ * Electric gestures are fired once the pool has linked (an earlier one is held by the engine
+ * and would emit gesture:trigger late).
+ * Usage: node harness/gates/states.mjs [--plant-rename-shock | --plant-dark-gem | --plant-unflag
+ *        | --plant-dark-warm-emotion]
  */
 import { runGate, parsePlant, pixelStats, FIELD_DARK, FIELD_LIGHT } from './lib.mjs';
 
@@ -38,6 +44,7 @@ await runGate('states', { plant }, async ({ open }) => {
     await page.evaluate(() => H.mount({ size: 225 }));
     await page.evaluate(() => H.sleep(500));
 
+    await page.evaluate(() => H.electricReady());
     const available = await page.evaluate(() => H.gestures());
     const missing = KEEP.filter(g => !available.includes(g));
 
@@ -76,6 +83,26 @@ await runGate('states', { plant }, async ({ open }) => {
     await page.evaluate(() => H.surface('light'));
     await page.evaluate(() => H.sleep(600));
     const light = await measure(FIELD_LIGHT);
+
+    // Emotion legs: each emotion's core on both surfaces, at rest on the base shape.
+    const allEmotions = await page.evaluate(() => H.mascot.getAvailableEmotions());
+    const emotionLegs = [];
+    for (const e of allEmotions) {
+        await page.evaluate(name => H.emotion(name), e);
+        await page.evaluate(() => H.surface('dark'));
+        await page.evaluate(() => H.sleep(900));
+        const d = await measure(FIELD_DARK);
+        await page.evaluate(() => H.surface('light'));
+        await page.evaluate(() => H.sleep(300));
+        const l = await measure(FIELD_LIGHT);
+        emotionLegs.push({
+            emotion: e,
+            darkLstar: +d.meanAbsDLstar.toFixed(2),
+            lightLstar: +l.meanAbsDLstar.toFixed(2),
+            ok: d.meanAbsDLstar >= FLOOR.dark && l.meanAbsDLstar >= FLOOR.light,
+        });
+    }
+    await page.evaluate(() => H.emotion('neutral', null));
 
     // Morph to and from every picked shape: crystal family kept, soul present, and the gem
     // above the luminance floor on both surfaces for every shape.
@@ -117,6 +144,7 @@ await runGate('states', { plant }, async ({ open }) => {
         darkSurfaceVisible: dark.meanAbsDLstar >= FLOOR.dark,
         lightSurfaceVisible: light.meanAbsDLstar >= FLOOR.light,
         morphsToAndFromEveryShape: morphs.length === 2 * (SHAPES.length - 1) && morphs.every(m => m.ok),
+        everyEmotionVisible: emotionLegs.length >= 15 && emotionLegs.every(l => l.ok),
     };
     await page.close();
     return {
@@ -130,6 +158,7 @@ await runGate('states', { plant }, async ({ open }) => {
             pageErrors: pageErrors.slice(0, 3),
             gemWindow: GEM_FRAC,
             morphs,
+            emotionLegs,
             floors: FLOOR,
             dark: { meanAbsDLstar: +dark.meanAbsDLstar.toFixed(2), meanAbsDL: +dark.meanAbsDL.toFixed(4), coverage: +dark.coverage.toFixed(3), centreMaxDL: +dark.centreMaxDL.toFixed(4) },
             light: { meanAbsDLstar: +light.meanAbsDLstar.toFixed(2), meanAbsDL: +light.meanAbsDL.toFixed(4), coverage: +light.coverage.toFixed(3), centreMaxDL: +light.centreMaxDL.toFixed(4) },

@@ -4,7 +4,9 @@
  * A look is a base gem (an SSSPresets entry: the hue and how deep it runs) plus the glass
  * uniforms the gem preset does not carry: how much studio it reflects (uEnv), the body light
  * floor that keeps a deep stone from reading black (uBody), the optical depth (uDepth), the
- * core colour (uCore, uCoreMix), how clear it is (uClarity) and the light-surface ink rim.
+ * core colour (uCore, uCoreMix), how much the current EMOTION drives the core (uEmotion: the
+ * body stays the look's stone, the core and particles carry the emotion), how clear it is
+ * (uClarity) and the light-surface ink rim.
  *
  * setLook(name, ms) ramps all of it; setGemColor(preset, ms) still shifts only the gem (the
  * refusal's slow ruby), and setGemColor(null) returns to the CURRENT look's gem.
@@ -20,6 +22,7 @@ export const LOOKS = Object.freeze({
         uDepth: 1.0,
         uCore: [0.35, 0.7, 1.0],
         uCoreMix: 0.6,
+        uEmotion: 1.0,
         uClarity: 0.0,
         uRimInk: [0.06, 0.09, 0.2],
     }),
@@ -31,6 +34,7 @@ export const LOOKS = Object.freeze({
         uDepth: 0.8,
         uCore: [0.1, 0.45, 1.0],
         uCoreMix: 1.0,
+        uEmotion: 1.0,
         uClarity: 0.6,
         uRimInk: [0.1, 0.13, 0.2],
     }),
@@ -42,6 +46,7 @@ export const LOOKS = Object.freeze({
         uDepth: 1.1,
         uCore: [0.9, 0.12, 0.45],
         uCoreMix: 0.6,
+        uEmotion: 1.0,
         uClarity: 0.0,
         uRimInk: [0.16, 0.04, 0.12],
     }),
@@ -51,7 +56,7 @@ export const LOOKS = Object.freeze({
 export const BASE_LOOK = 'sapphire';
 
 /** Scalar and vec3 uniforms a look sets. */
-export const LOOK_SCALARS = ['uEnv', 'uBody', 'uDepth', 'uCoreMix', 'uClarity'];
+export const LOOK_SCALARS = ['uEnv', 'uBody', 'uDepth', 'uCoreMix', 'uEmotion', 'uClarity'];
 export const LOOK_VEC3S = ['uCore', 'uRimInk'];
 
 /** Read a material's look uniforms into a plain object (the ramp start). */

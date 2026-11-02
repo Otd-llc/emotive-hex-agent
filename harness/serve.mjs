@@ -50,6 +50,9 @@ export const PLANTS = {
     unflag: [['crystalFamily:!0', 'crystalFamily:!1']],
     // States gate: a gem that still renders and moves, but dark.
     'dark-gem': [['gl_FragColor = vec4(finalColor, finalAlpha);', 'gl_FragColor = vec4(finalColor * 0.02, finalAlpha);']],
+    // States gate (emotion legs): the gem goes dark only while a warm emotion drives the core
+    // (red outweighs blue in emotionColor); the resting neutral gem still looks right.
+    'dark-warm-emotion': [['gl_FragColor = vec4(finalColor, finalAlpha);', 'gl_FragColor = vec4(finalColor * (uEmotion > 0.5 && emotionColor.r > emotionColor.b + 0.1 ? 0.02 : 1.0), finalAlpha);']],
     // Teardown gate: the context is never released.
     'no-context-loss': [['.forceContextLoss()', '.getContext()']],
     // GL gate: the core links synchronously on the first draw (the page freezes on a cold cache).

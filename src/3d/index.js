@@ -13,7 +13,7 @@
 import { Core3DManager } from './Core3DManager.js';
 import { assertAssetBasePath } from './utils/assetBasePath.js';
 import { EventManager } from '../core/events/EventManager.js';
-import { listEmotions, hasEmotion } from '../core/emotions/index.js';
+import { listEmotions, hasEmotion, getEmotion } from '../core/emotions/index.js';
 import { getGesture, listGestures } from '../core/gestures/index.js';
 import { applySSSPreset as applySSS, SSSPresets, BASE_GEM, GEM_SHIFT_MIN_MS } from './presets/SSSPresets.js';
 import { LOOKS, BASE_LOOK, writeLook } from './presets/looks.js';
@@ -599,6 +599,15 @@ export class EmotiveMascot3D {
         return listEmotions();
     }
 
+    /**
+     * The colour an emotion gives the crystal's core and particles (hex), e.g. for a swatch.
+     * @param {string} emotion
+     * @returns {string|null} '#RRGGBB', or null for an unknown emotion
+     */
+    getEmotionColor(emotion) {
+        return getEmotion(emotion)?.visual?.glowColor ?? null;
+    }
+
     /** @returns {Array<{name: string, type: string, category: string}>} */
     getAvailableGestures() {
         return listGestures();
@@ -684,10 +693,10 @@ export class EmotiveMascot3D {
         if (!SSSPresets[name] || !this.core3D) return false;
         const durationMs = Math.max(GEM_SHIFT_MIN_MS, Number(ms) || 0);
         this.core3D._sssTransitionDurationMs = durationMs;
-        // Off the look's own gem (e.g. the refusal ruby) the core follows the gem's hue; back on
-        // it, the look's core returns. Same duration, so it is one shift.
+        // Off the look's own gem (e.g. the refusal ruby) the core follows the gem's hue, not the
+        // emotion; back on it, the look's core and the emotion return. Same duration, one shift.
         const look = LOOKS[this._look ?? BASE_LOOK];
-        if (look) this.core3D.setLookUniforms?.(name === look.gem ? look : { ...look, uCoreMix: 0 }, durationMs);
+        if (look) this.core3D.setLookUniforms?.(name === look.gem ? look : { ...look, uCoreMix: 0, uEmotion: 0 }, durationMs);
         return this.setSSSPreset(name, { durationMs });
     }
 

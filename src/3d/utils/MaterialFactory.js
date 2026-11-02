@@ -83,6 +83,7 @@ function createCrystalMaterial(glowColor, glowIntensity, overrides = {}, assetBa
             uDepth: { value: LOOKS[BASE_LOOK].uDepth },
             uCore: { value: new THREE.Vector3(...LOOKS[BASE_LOOK].uCore) },
             uCoreMix: { value: LOOKS[BASE_LOOK].uCoreMix },
+            uEmotion: { value: LOOKS[BASE_LOOK].uEmotion },
             uClarity: { value: LOOKS[BASE_LOOK].uClarity },
             frostiness: { value: overrides.frostiness ?? sssPreset?.frostiness ?? CRYSTAL_DEFAULT_UNIFORMS.frostiness },
             fresnelPower: {
