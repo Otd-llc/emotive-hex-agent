@@ -146,3 +146,6 @@ assets/**/*.md
 # Dev/test audio tracks (calibration clicks, BPM test files)
 site/public/assets/tracks/calibration/
 site/public/assets/tracks/test/
+
+# Engine captures (harness/capture.mjs)
+harness/_captures/

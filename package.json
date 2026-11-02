@@ -32,6 +32,7 @@
         "gate:teardown": "node harness/gates/teardown.mjs",
         "gate:states": "node harness/gates/states.mjs",
         "gate:flash": "node harness/gates/flash.mjs",
+        "capture": "node harness/capture.mjs",
         "harness": "node harness/serve.mjs"
     },
     "peerDependencies": {
