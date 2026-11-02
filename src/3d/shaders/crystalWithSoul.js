@@ -83,6 +83,7 @@ uniform float time;
 uniform vec3 emotionColor;
 uniform float glowIntensity;
 uniform float opacity;
+uniform float uSurface;        // 0 = dark page, 1 = light page (setSurface)
 
 // Crystal appearance controls
 uniform float frostiness;        // 0 = clear glass, 1 = fully frosted (default: 0.7)
@@ -892,6 +893,10 @@ void main() {
         finalAlpha = max(finalAlpha, crackContrib.a * 0.5);
     }
 
+    // Light page: deepen the colour and raise the alpha floor so the gem holds on a cream
+    // field instead of washing out (starting values; the P4 look round tunes them).
+    finalColor = mix(finalColor, finalColor * 0.85, uSurface);
+    finalAlpha = mix(finalAlpha, max(finalAlpha, 0.55), uSurface);
     gl_FragColor = vec4(finalColor, finalAlpha);
     // Encode here: there is no post pass to tone-map and sRGB-encode (fix c).
     #include <tonemapping_fragment>

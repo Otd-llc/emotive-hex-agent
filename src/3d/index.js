@@ -532,12 +532,10 @@ export class EmotiveMascot3D {
 
         if (this.core3D && !this._materialSwapCallbackSet) {
             this._materialSwapCallbackSet = true;
+            // Re-apply synchronously at the swap (fix d): the new material's uniforms exist
+            // as soon as it is assigned; a timer let one frame render with default values.
             this.core3D.onMaterialSwap = () => {
-                if (this._currentSSSPreset) {
-                    setTimeout(() => {
-                        applySSS(this, this._currentSSSPreset);
-                    }, 50);
-                }
+                if (this._currentSSSPreset) applySSS(this, this._currentSSSPreset);
             };
         }
 

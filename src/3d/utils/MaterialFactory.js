@@ -27,6 +27,7 @@ const textureLoader = {
 };
 import { getCrystalShaders, CRYSTAL_DEFAULT_UNIFORMS } from '../shaders/crystalWithSoul.js';
 import { SSS_PRESETS } from '../shaders/utils/subsurfaceScattering.js';
+import { getSurface, onSurfaceChange } from '../materials/surface.js';
 import { DEFORMATION_DEFAULT_UNIFORMS } from '../shaders/utils/deformation.js';
 import { CRACK_DEFAULT_UNIFORMS } from '../shaders/utils/objectSpaceCracks.js';
 
@@ -177,6 +178,8 @@ function createCrystalMaterial(
             emotionColor: { value: new THREE.Color(glowColor[0], glowColor[1], glowColor[2]) },
             glowIntensity: { value: glowIntensity },
             opacity: { value: 1.0 },
+            // 0 = dark page, 1 = light page; kept live by the surface listener below (fix d).
+            uSurface: { value: getSurface() === 'light' ? 1 : 0 },
             frostiness: { value: overrides.frostiness ?? CRYSTAL_DEFAULT_UNIFORMS.frostiness },
             fresnelPower: {
                 value: overrides.fresnelPower ?? CRYSTAL_DEFAULT_UNIFORMS.fresnelPower,
@@ -379,6 +382,12 @@ function createCrystalMaterial(
         depthWrite: true, // Soul renders to separate RT via texture sampling, not depth
         blending: THREE.NormalBlending,
     });
+
+    // setSurface() reaches live crystals without a remount; dropped with the material.
+    const offSurface = onSurfaceChange(mode => {
+        material.uniforms.uSurface.value = mode === 'light' ? 1 : 0;
+    });
+    material.addEventListener('dispose', offSurface);
 
     return { material, type: 'crystal' };
 }
