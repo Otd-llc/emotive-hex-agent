@@ -24,7 +24,7 @@ export const STUBS = [
     'core/morpher/AgentBPMDetector.js', 'core/audio/AudioInterpreter.js',
     '3d/effects/SmokeParticleSystem.js', '3d/effects/ParticleAtmosphericsManager.js',
     '3d/AmbientOcclusionPass.js', '3d/effects/VelocityMotionBlurPass.js', '3d/UnrealBloomPassAlpha.js',
-    '3d/debug/PerformanceProfiler.js', '3d/effects/CrackLayer.js', '3d/effects/shatter/ShatterSystem.js',
+    '3d/effects/CrackLayer.js', '3d/effects/shatter/ShatterSystem.js',
     '3d/materials/overlays/WaterMaterial.js', '3d/materials/overlays/FireMaterial.js',
     '3d/materials/overlays/VoidMaterial.js', '3d/materials/overlays/IceMaterial.js',
     '3d/materials/overlays/LightMaterial.js', '3d/materials/overlays/EarthMaterial.js',

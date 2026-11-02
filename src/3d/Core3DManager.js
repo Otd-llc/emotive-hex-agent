@@ -56,7 +56,6 @@ import { createEarthMaterial } from './materials/overlays/EarthMaterial.js';
 import { createNatureMaterial } from './materials/overlays/NatureMaterial.js';
 import { SmokeParticleSystem } from './effects/SmokeParticleSystem.js';
 import { ElementInstancedSpawner } from './effects/ElementInstancedSpawner.js';
-import { profiler } from './debug/PerformanceProfiler.js';
 
 // Crystal calibration rotation to show flat facet facing camera
 // Hexagonal crystal has vertices at 0°, 60°, 120°, etc.
@@ -163,9 +162,6 @@ export class Core3DManager {
             glowHalo: options.glowHalo, // false = no screen-space glow halo
         });
 
-        // Pass WebGL context and renderer to profiler for diagnostics
-        profiler.setGL(this.renderer.renderer.getContext());
-        profiler.setRenderer(this.renderer);
 
         // Register for WebGL context restoration to recreate custom materials
         this.renderer.onContextRestored = () => this._handleContextRestored();
@@ -1520,7 +1516,6 @@ export class Core3DManager {
      * Render frame
      */
     render(deltaTime) {
-        profiler.startFrame();
 
         // Guard against calls after destroy
         if (this._destroyed) {
@@ -1538,14 +1533,10 @@ export class Core3DManager {
         this._lastDeltaTime = deltaTime / 1000;
 
         // Update animations
-        profiler.start('animator');
         this.animator.update(deltaTime);
-        profiler.end('animator');
 
         // Update geometry morph animation
-        profiler.start('geometryMorpher');
         const morphState = this.geometryMorpher.update(deltaTime);
-        profiler.end('geometryMorpher');
 
         // If waiting for async geometry to load, pause morph at midpoint
         if (morphState.shouldSwapGeometry && this._pendingGeometryLoad) {
@@ -1794,13 +1785,11 @@ export class Core3DManager {
         }
 
         // Update breathing animation
-        profiler.start('breathing');
         this.breathingAnimator.update(
             deltaTime,
             this.emotion,
             getUndertoneModifier(this.undertone)
         );
-        profiler.end('breathing');
 
         // Update imperative breathing phase (for meditation)
         const imperativeBreathScale = this._updateBreathingPhase(deltaTime);
@@ -1831,7 +1820,6 @@ export class Core3DManager {
         // Update all behaviors (rotation, righting, facing) via controller
         // This handles: ambient spin, self-stabilization, and tidal lock for moon
         // Apply freeze from previous frame's hold gesture (reduces rotation speed)
-        profiler.start('behaviorController');
         const freezeRotation = this._pendingFreezeRotation || 0;
         const freezeWobble = this._pendingFreezeWobble || 0;
 
@@ -1843,7 +1831,6 @@ export class Core3DManager {
         } else {
             this.behaviorController.update(deltaTime, this.baseEuler);
         }
-        profiler.end('behaviorController');
 
         // Set wobble enabled based on freeze (temporarily disable during hold)
         if (freezeWobble > 0.5 && this.wobbleEnabled) {
@@ -1869,22 +1856,18 @@ export class Core3DManager {
         // UPDATE RHYTHM ADAPTER - Must happen before gesture blending
         // Always update - the adapter handles its own enabled/playing state
         // ═══════════════════════════════════════════════════════════════════════════
-        profiler.start('rhythmAdapter');
         if (this.rhythm3DAdapter) {
             this.rhythm3DAdapter.update(deltaTime);
         }
-        profiler.end('rhythmAdapter');
 
         // ═══════════════════════════════════════════════════════════════════════════
         // GESTURE BLENDING SYSTEM - Blend multiple simultaneous gestures
         // ═══════════════════════════════════════════════════════════════════════════
-        profiler.start('gestureBlend');
         const blended = this.animationManager.blend(
             this.baseEuler, // Pass raw Euler angles to avoid gimbal lock
             this.baseScale,
             this.baseGlowIntensity
         );
-        profiler.end('gestureBlend');
 
         // Get rhythm modulation (applies to gesture output)
         // Auto-detects if rhythm is playing (started by any system - audio manager, etc.)
@@ -3534,7 +3517,6 @@ export class Core3DManager {
         } // end if (this.enableShatter && this.shatterSystem)
 
         // Update element spawner (ice crystals, rocks, etc.)
-        profiler.start('elementSpawner');
         if (this.elementSpawner) {
             // Pass gesture progress for element animations (fire temperature, water flow, etc.)
             // Use first available progress from any active elemental effect
@@ -3550,7 +3532,6 @@ export class Core3DManager {
                 null;
             this.elementSpawner.update(deltaTime / 1000, gestureProgress); // Convert ms to seconds
         }
-        profiler.end('elementSpawner');
 
         // Apply blink effects (AFTER gestures, blending with other animations)
         if (blinkState.isBlinking) {
@@ -3587,7 +3568,6 @@ export class Core3DManager {
         // PARTICLE SYSTEM UPDATE & RENDERING (Orchestrated)
         // ═══════════════════════════════════════════════════════════════════════════
         // Only check particleVisibility (runtime toggle), not particlesEnabled (initial config)
-        profiler.start('particleOrchestrator');
         if (this.particleVisibility && this.particleOrchestrator) {
             // Calculate actual 3D core radius in world units
             // This ensures particles orbit at consistent distance regardless of screen size
@@ -3619,7 +3599,6 @@ export class Core3DManager {
                 coreRadius3D // Pass actual 3D core radius for particle orbit distance
             );
         }
-        profiler.end('particleOrchestrator');
 
         // Calculate effective glow intensity (blink boost applied at render time, non-mutating)
         // Use multiplicative blending (1.0 + boost) so fade can still reach 0
@@ -3851,7 +3830,6 @@ export class Core3DManager {
         }
 
         // Render with Three.js — update pre-allocated options object (avoids per-frame allocation)
-        profiler.start('threeRenderer');
         const opts = this._renderOptions;
         opts.position = this.position;
         opts.rotation = this.rotation;
@@ -3877,12 +3855,10 @@ export class Core3DManager {
         // Shader-based localized vertex deformation for impacts
         opts.deformation = this._deformation;
         this.renderer.render(opts);
-        profiler.end('threeRenderer');
 
         // Update lunar eclipse animation (Blood Moon)
         this.effectManager.updateLunarEclipse(deltaTime);
 
-        profiler.endFrame();
     }
 
     /**
