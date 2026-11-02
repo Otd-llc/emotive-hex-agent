@@ -1,0 +1,225 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════
+ *  ╔═○─┐ emotive
+ *    ●●  ENGINE
+ *  └─○═╝
+ *          ◐ ◑ ◒ ◓  PERFORMANCE MONITORING MANAGER  ◓ ◒ ◑ ◐
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════════════
+ *
+ * @fileoverview PerformanceMonitoringManager - Performance Optimization and Monitoring
+ * @author Emotive Engine Team
+ * @version 1.0.0
+ * @module PerformanceMonitoringManager
+ *
+ * ╔═══════════════════════════════════════════════════════════════════════════════════
+ * ║                                   PURPOSE
+ * ╠═══════════════════════════════════════════════════════════════════════════════════
+ * ║ Manages performance monitoring, degradation control, and FPS targeting. Coordinates
+ * ║ between diagnosticsManager, degradationManager, and animationFrameController to
+ * ║ optimize mascot performance based on system capabilities.
+ * ╚═══════════════════════════════════════════════════════════════════════════════════
+ *
+ * ┌───────────────────────────────────────────────────────────────────────────────────
+ * │ ⚡ RESPONSIBILITIES
+ * ├───────────────────────────────────────────────────────────────────────────────────
+ * │ • Monitor and report degradation status
+ * │ • Control degradation level (manual override)
+ * │ • Check feature availability at current degradation level
+ * │ • Manage target FPS for animation loops
+ * │ • Enable/disable performance degradation mode
+ * │ • Coordinate particle limits based on performance
+ * └───────────────────────────────────────────────────────────────────────────────────
+ *
+ * ════════════════════════════════════════════════════════════════════════════════════
+ */
+
+import { browserCompatibility } from '../../utils/browserCompatibility.js';
+
+export class PerformanceMonitoringManager {
+    /**
+     * Create PerformanceMonitoringManager
+     *
+     * @param {Object} deps - Dependencies
+     * @param {Object} deps.diagnosticsManager - Diagnostics manager instance
+     * @param {Object} deps.degradationManager - Degradation manager instance
+     * @param {Object} deps.animationFrameController - Animation frame controller instance
+     * @param {Object} deps.animationController - Animation controller instance
+     * @param {Object} deps.particleSystem - Particle system instance
+     * @param {Object} deps.healthCheckManager - Health check manager instance
+     * @param {Object} deps.config - Configuration object
+     * @param {Object} [deps.chainTarget] - Return value for method chaining
+     */
+    constructor(deps) {
+        // Required dependency validation
+        if (!deps.diagnosticsManager)
+            throw new Error('PerformanceMonitoringManager: diagnosticsManager required');
+        if (!deps.animationFrameController)
+            throw new Error('PerformanceMonitoringManager: animationFrameController required');
+        if (!deps.animationController)
+            throw new Error('PerformanceMonitoringManager: animationController required');
+        if (!deps.particleSystem)
+            throw new Error('PerformanceMonitoringManager: particleSystem required');
+        if (!deps.config) throw new Error('PerformanceMonitoringManager: config required');
+        // Note: healthCheckManager can be null initially (set post-init)
+
+        this.diagnosticsManager = deps.diagnosticsManager;
+        this.degradationManager = deps.degradationManager || null;
+        this.animationFrameController = deps.animationFrameController;
+        this.animationController = deps.animationController;
+        this.particleSystem = deps.particleSystem;
+        this.healthCheckManager = deps.healthCheckManager;
+        this.config = deps.config;
+        this._chainTarget = deps.chainTarget || this;
+    }
+
+    /**
+     * Get current degradation status
+     * @returns {Object} Degradation status including level, active features, and metrics
+     *
+     * @example
+     * const status = mascot.getDegradationStatus();
+     * console.log('Level:', status.level);
+     * console.log('Active features:', status.features);
+     */
+    getDegradationStatus() {
+        return this.diagnosticsManager.getDegradationStatus();
+    }
+
+    /**
+     * Manually set degradation level
+     * @param {number|string} level - Degradation level index or name
+     * @returns {boolean} True if level was set successfully
+     *
+     * @example
+     * // Set to low degradation (level 1)
+     * mascot.setDegradationLevel(1);
+     *
+     * @example
+     * // Set to high degradation (level 3)
+     * mascot.setDegradationLevel(3);
+     */
+    setDegradationLevel(level) {
+        return this.diagnosticsManager.setDegradationLevel(level);
+    }
+
+    /**
+     * Check if a specific feature is available in current degradation level
+     * @param {string} feature - Feature name (audio, particles, fullEffects, etc.)
+     * @returns {boolean} True if feature is available
+     *
+     * @example
+     * if (mascot.isFeatureAvailable('particles')) {
+     *   mascot.setEmotion('excited'); // Full particle effects
+     * } else {
+     *   mascot.setEmotion('calm'); // Reduced effects
+     * }
+     *
+     * @example
+     * // Check audio availability before enabling TTS
+     * if (mascot.isFeatureAvailable('audio')) {
+     *   mascot.speak('Hello!');
+     * }
+     */
+    isFeatureAvailable(feature) {
+        if (!this.degradationManager) {
+            // Fallback to basic feature detection
+            const features = browserCompatibility.featureDetection.getFeatures();
+            return features[feature] || false;
+        }
+
+        return this.degradationManager.isFeatureAvailable(feature);
+    }
+
+    /**
+     * Set target FPS for animation loop
+     * @param {number} targetFPS - Target frames per second (30, 60, 120, etc.)
+     * @returns {EmotiveMascot} Parent mascot instance for chaining
+     *
+     * @example
+     * // Reduce FPS for power saving
+     * mascot.setTargetFPS(30);
+     *
+     * @example
+     * // High-refresh rate displays
+     * mascot.setTargetFPS(120);
+     *
+     * @example
+     * // Standard 60 FPS
+     * mascot.setTargetFPS(60);
+     */
+    setTargetFPS(targetFPS) {
+        return this.animationFrameController.setTargetFPS(targetFPS);
+    }
+
+    /**
+     * Gets the current target FPS
+     * @returns {number} Target frames per second
+     *
+     * @example
+     * const currentFPS = mascot.getTargetFPS();
+     * console.log(`Animation running at ${currentFPS} FPS target`);
+     */
+    getTargetFPS() {
+        return this.animationFrameController.getTargetFPS();
+    }
+
+    /**
+     * Enable or disable performance degradation mode
+     * @param {boolean} enabled - Whether to enable degradation
+     * @returns {EmotiveMascot} Parent mascot instance for chaining
+     *
+     * @note When enabled, reduces particle count to 50% of maximum
+     * @note When disabled, restores particle count to configured maximum
+     *
+     * @example
+     * // Enable degradation mode (reduce particles to 50%)
+     * mascot.setPerformanceDegradation(true);
+     *
+     * @example
+     * // Disable degradation mode (restore full particle count)
+     * mascot.setPerformanceDegradation(false);
+     *
+     * @example
+     * // Auto-detect low performance and degrade
+     * setInterval(() => {
+     *   const metrics = mascot.getPerformanceMetrics();
+     *   if (metrics.fps < 30) {
+     *     mascot.setPerformanceDegradation(true);
+     *   } else if (metrics.fps > 55) {
+     *     mascot.setPerformanceDegradation(false);
+     *   }
+     * }, 5000);
+     */
+    setPerformanceDegradation(enabled) {
+        const metrics = this.animationController.getPerformanceMetrics();
+
+        if (enabled && !metrics.performanceDegradation) {
+            const currentMax = this.particleSystem.maxParticles;
+            const newMax = Math.max(5, Math.floor(currentMax * 0.5));
+            this.particleSystem.setMaxParticles(newMax);
+
+            // Forced performance degradation
+        } else if (!enabled && metrics.performanceDegradation) {
+            this.particleSystem.setMaxParticles(this.config.maxParticles);
+
+            // Disabled performance degradation
+        }
+
+        return this._chainTarget;
+    }
+
+    /**
+     * Get current performance metrics
+     * @returns {Object} Performance metrics including FPS, frame time, degradation status
+     *
+     * @example
+     * const metrics = mascot.getPerformanceMetrics();
+     * console.log('FPS:', metrics.fps);
+     * console.log('Frame time:', metrics.frameTime);
+     * console.log('Degradation:', metrics.performanceDegradation);
+     */
+    getPerformanceMetrics() {
+        return this.healthCheckManager.getPerformanceMetrics();
+    }
+}

@@ -1,0 +1,889 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════
+ *  ╔═○─┐ emotive
+ *    ●●  ENGINE
+ *  └─○═╝
+ *                     ◐ ◑ ◒ ◓  PARTICLE SYSTEM  ◓ ◒ ◑ ◐
+ *
+ * ═══════════════════════════════════════════════════════════════════════════════════════
+ *
+ * @fileoverview Particle System - Orchestrator of Emotional Atmosphere with 3D Depth
+ * @author Emotive Engine Team
+ * @version 2.4.0
+ * @module ParticleSystem
+ * @changelog 2.4.0 - Added z-coordinate depth system with split rendering layers
+ * @changelog 2.3.0 - Batch rendering optimization for reduced state changes
+ * @changelog 2.2.0 - Added undertone saturation system for dynamic particle depth
+ * @changelog 2.1.0 - Added support for passing emotion colors to individual particles
+ */
+
+import { VISIBILITY } from './config/defaults.js';
+
+/**
+ *
+ * ╔═══════════════════════════════════════════════════════════════════════════════════
+ * ║                                   PURPOSE
+ * ╠═══════════════════════════════════════════════════════════════════════════════════
+ * ║ The CONDUCTOR of particle chaos. Manages the lifecycle, behavior, and
+ * ║ performance of all particles. Uses object pooling to prevent memory leaks
+ * ║ and coordinates particles to create emotional atmospheres around the orb.
+ * ║
+ * ║ NEW: Undertone saturation dynamically adjusts particle colors based on emotional
+ * ║ intensity, creating visual depth through saturation levels.
+ * ╚═══════════════════════════════════════════════════════════════════════════════════
+ *
+ * ┌───────────────────────────────────────────────────────────────────────────────────
+ * │ 🎭 SYSTEM FEATURES
+ * ├───────────────────────────────────────────────────────────────────────────────────
+ * │ • Object pooling for performance (reuse dead particles)
+ * │ • Time-based spawning with accumulator
+ * │ • Automatic cleanup every 5 seconds
+ * │ • Memory leak detection and prevention
+ * │ • Dynamic particle limits based on emotion
+ * │ • 13 different particle behaviors
+ * │ • Undertone-based saturation adjustments for particle colors
+ * └───────────────────────────────────────────────────────────────────────────────────
+ *
+ * ┌───────────────────────────────────────────────────────────────────────────────────
+ * │ 🔄 OBJECT POOL STRATEGY
+ * ├───────────────────────────────────────────────────────────────────────────────────
+ * │ • Lazy initialization (create as needed)
+ * │ • Max pool size: 50 particles
+ * │ • Reuse dead particles before creating new
+ * │ • Track pool hits/misses for optimization
+ * │ • Absolute max: 2x configured limit (prevents runaway)
+ * └───────────────────────────────────────────────────────────────────────────────────
+ *
+ * ┌───────────────────────────────────────────────────────────────────────────────────
+ * │ 📊 PERFORMANCE LIMITS
+ * ├───────────────────────────────────────────────────────────────────────────────────
+ * │ • Default max particles  : 50
+ * │ • Absolute max particles : 100 (2x default)
+ * │ • Pool size             : Min(maxParticles, 50)
+ * │ • Cleanup interval      : 5000ms
+ * │ • Spawn rate            : Based on emotion config
+ * └───────────────────────────────────────────────────────────────────────────────────
+ *
+ * ╔═══════════════════════════════════════════════════════════════════════════════════
+ * ║                              MEMORY MANAGEMENT
+ * ╠═══════════════════════════════════════════════════════════════════════════════════
+ * ║ Critical for preventing memory leaks:
+ * ║ 1. Reuse particles from pool when available
+ * ║ 2. Clear references when returning to pool
+ * ║ 3. Periodic cleanup of excess particles
+ * ║ 4. Track creation/destruction for leak detection
+ * ║ 5. Hard limits prevent runaway particle creation
+ * ╚═══════════════════════════════════════════════════════════════════════════════════
+ *
+ * ════════════════════════════════════════════════════════════════════════════════════
+ */
+
+import { applyUndertoneSaturationToArray } from '../utils/colorUtils.js';
+import rhythmIntegration from './audio/rhythmIntegration.js';
+import { getEmotion } from './emotions/index.js';
+import { emotionCache } from './cache/EmotionCache.js';
+import ParticlePool from './particle/ParticlePool.js';
+import ParticleSpawner from './particle/ParticleSpawner.js';
+import ParticleRenderer from './particle/ParticleRenderer.js';
+
+class ParticleSystem {
+    constructor(maxParticles = 50, errorBoundary = null) {
+        this.errorBoundary = errorBoundary;
+        this.maxParticles = maxParticles;
+        this.absoluteMaxParticles = maxParticles * 2; // Hard limit to prevent leaks
+
+        // Active particles
+        this.particles = [];
+
+        // Object pool - now managed by ParticlePool class
+        this.particlePool = new ParticlePool(maxParticles);
+
+        // Spawner - now managed by ParticleSpawner class
+        this.particleSpawner = new ParticleSpawner();
+
+        // Renderer - now managed by ParticleRenderer class
+        this.particleRenderer = new ParticleRenderer();
+
+        // Containment bounds (null = no containment)
+        this.containmentBounds = null;
+
+        // Delegate memory/performance tracking to pool
+        this.stateChangeCount = 0;
+        this.lastMemoryCheck = Date.now();
+        this.lastLeakedCount = 0;
+
+        // Performance tracking
+        this.particleCount = 0;
+
+        // Cleanup timer to prevent memory buildup
+        this.cleanupTimer = 0;
+        this.cleanupInterval = 5000; // Clean up every 5 seconds
+
+        // ParticleSystem initialized
+    }
+
+    // Delegate pool properties for backward compatibility
+    get pool() {
+        return this.particlePool.pool;
+    }
+    get poolSize() {
+        return this.particlePool.poolSize;
+    }
+    get poolHits() {
+        return this.particlePool.poolHits;
+    }
+    get poolMisses() {
+        return this.particlePool.poolMisses;
+    }
+    get totalParticlesCreated() {
+        return this.particlePool.totalParticlesCreated;
+    }
+    get totalParticlesDestroyed() {
+        return this.particlePool.totalParticlesDestroyed;
+    }
+
+    // Delegate spawner properties for backward compatibility
+    get spawnAccumulator() {
+        return this.particleSpawner.spawnAccumulator;
+    }
+    set spawnAccumulator(value) {
+        this.particleSpawner.spawnAccumulator = value;
+    }
+
+    /**
+     * Gets a particle from the pool or creates a new one
+     * @param {number} x - X position
+     * @param {number} y - Y position
+     * @param {string} behavior - Particle behavior type
+     * @returns {Particle} Particle instance
+     */
+    getParticleFromPool(x, y, behavior) {
+        return this.particlePool.getParticle(
+            x,
+            y,
+            behavior,
+            this.scaleFactor || 1,
+            this.particleSizeMultiplier || 1,
+            this.currentEmotionColors,
+            this.currentEmotion,
+            this.gestureBehavior
+        );
+    }
+
+    /**
+     * Returns a particle to the pool for reuse
+     * @param {Particle} particle - Particle to return to pool
+     */
+    returnParticleToPool(particle) {
+        this.particlePool.returnParticle(particle);
+    }
+
+    /**
+     * Spawns particles based on emotional state and particle rate
+     * NEW APPROACH: Fixed timestep - only spawn at specific intervals
+     *
+     * @param {string} behavior - Particle behavior type (ambient, rising, falling, etc.)
+     * @param {string} emotion - Current emotional state
+     * @param {number} particleRate - Rate of particle spawning (particles per second at 60fps)
+     * @param {number} centerX - X coordinate of spawn center
+     * @param {number} centerY - Y coordinate of spawn center
+     * @param {number} deltaTime - Time since last frame in milliseconds
+     * @param {number|null} count - Force spawn this many particles (null for rate-based)
+     * @param {number} minParticles - Minimum particles to maintain
+     * @param {number} maxParticles - Maximum particles allowed
+     * @param {number} scaleFactor - Scale multiplier for particle sizes
+     * @param {number} particleSizeMultiplier - Additional size multiplier
+     * @param {Array|null} emotionColors - Array of color strings or weighted color objects
+     * @param {string|null} undertone - Emotional undertone for saturation adjustment
+     *                                   (intense, confident, nervous, clear, tired, subdued)
+     *                                   Affects particle color saturation to create depth
+     */
+    spawn(
+        behavior,
+        emotion,
+        particleRate,
+        centerX,
+        centerY,
+        deltaTime,
+        count = null,
+        minParticles = 0,
+        maxParticles = 10,
+        scaleFactor = 1,
+        particleSizeMultiplier = 1,
+        emotionColors = null,
+        undertone = null
+    ) {
+        this.scaleFactor = scaleFactor; // Store for particle creation
+        this.particleSizeMultiplier = particleSizeMultiplier; // Store for particle sizing
+        if (this.errorBoundary) {
+            return this.errorBoundary.wrap(() => {
+                this._spawn(
+                    behavior,
+                    emotion,
+                    particleRate,
+                    centerX,
+                    centerY,
+                    deltaTime,
+                    count,
+                    minParticles,
+                    maxParticles,
+                    emotionColors,
+                    undertone
+                );
+            }, 'particle-spawn')();
+        } else {
+            this._spawn(
+                behavior,
+                emotion,
+                particleRate,
+                centerX,
+                centerY,
+                deltaTime,
+                count,
+                minParticles,
+                maxParticles,
+                emotionColors,
+                undertone
+            );
+        }
+    }
+
+    /**
+     * Resets the spawn accumulator (for tab switches)
+     */
+    resetAccumulator() {
+        this.particleSpawner.resetAccumulator();
+    }
+
+    /**
+     * Internal spawn implementation - TIME-BASED accumulation for smooth spawning
+     *
+     * Applies undertone saturation adjustments to particle colors before spawning.
+     * The saturation system creates visual depth:
+     * - Intense/Confident: Oversaturated colors appear to pop forward
+     * - Clear: Normal midtone colors sit in the middle ground
+     * - Tired/Subdued: Desaturated colors recede into background
+     *
+     * This creates a natural transition as particles cycle through their lifecycle,
+     * with new particles spawning with current undertone saturation while existing
+     * particles maintain their original colors until expiration.
+     */
+    _spawn(
+        behavior,
+        emotion,
+        particleRate,
+        centerX,
+        centerY,
+        deltaTime,
+        count,
+        minParticles = 0,
+        maxParticles = 10,
+        emotionColors = null,
+        undertone = null
+    ) {
+        // Store emotion for particle initialization
+        this.currentEmotion = emotion;
+
+        // Debug logging removed for production
+
+        // Store base colors and undertone separately to ensure consistent application
+        this.baseEmotionColors = emotionColors;
+        this.currentUndertone = undertone;
+
+        // Apply undertone saturation to emotion colors for all particles
+        // This adjustment persists for the lifetime of each particle, creating
+        // smooth visual transitions as particles naturally cycle
+        this.currentEmotionColors =
+            emotionColors && undertone
+                ? applyUndertoneSaturationToArray(emotionColors, undertone)
+                : emotionColors;
+
+        // Apply rhythm modulation if enabled
+        let rhythmModulatedRate = particleRate;
+        if (rhythmIntegration.isEnabled()) {
+            const emotionConfig =
+                emotionCache && emotionCache.isInitialized
+                    ? emotionCache.getEmotion(emotion)
+                    : getEmotion(emotion);
+            if (emotionConfig) {
+                const modulation = rhythmIntegration.applyParticleRhythm(emotionConfig, this);
+
+                // Apply emission burst on beat
+                if (modulation.emitBurst) {
+                    for (
+                        let i = 0;
+                        i < modulation.emitBurst && this.particles.length < maxParticles;
+                        i++
+                    ) {
+                        this.spawnSingleParticle(behavior, centerX, centerY);
+                    }
+                }
+
+                // Modulate emission rate
+                if (modulation.emissionRate !== undefined) {
+                    rhythmModulatedRate *= modulation.emissionRate;
+                }
+            }
+        }
+
+        // If specific count is provided, spawn that many
+        if (count !== null) {
+            for (let i = 0; i < count && this.particles.length < this.maxParticles; i++) {
+                this.spawnSingleParticle(behavior, centerX, centerY);
+            }
+            return;
+        }
+
+        // Skip spawning if frame rate is too low (performance optimization)
+        if (this.skipSpawnThisFrame) {
+            return;
+        }
+
+        // Always maintain minimum particles
+        while (this.particles.length < minParticles && this.particles.length < this.maxParticles) {
+            this.spawnSingleParticle(behavior, centerX, centerY);
+        }
+
+        // If we're at or above max for this emotion, don't spawn more
+        if (this.particles.length >= maxParticles) {
+            return;
+        }
+
+        // Don't spawn if rate is 0
+        if (rhythmModulatedRate <= 0) return;
+
+        // Calculate how many particles to spawn using ParticleSpawner
+        const particlesToSpawn = this.particleSpawner.calculateSpawnRate(
+            rhythmModulatedRate,
+            deltaTime
+        );
+
+        // Spawn the calculated number of particles
+        for (let i = 0; i < particlesToSpawn && this.particles.length < maxParticles; i++) {
+            this.spawnSingleParticle(behavior, centerX, centerY);
+        }
+    }
+
+    /**
+     * Backward compatibility wrapper for getSpawnPosition
+     * @deprecated Use particleSpawner.getSpawnPosition instead
+     */
+    getSpawnPosition(behavior, centerX, centerY, canvasWidth, canvasHeight) {
+        if (!this._deprecationWarned_getSpawnPosition) {
+            this._deprecationWarned_getSpawnPosition = true;
+            console.warn('[ParticleSystem] getSpawnPosition() is deprecated. Use particleSpawner.getSpawnPosition() instead.');
+        }
+        return this.particleSpawner.getSpawnPosition(
+            behavior,
+            centerX,
+            centerY,
+            canvasWidth,
+            canvasHeight,
+            this.currentEmotion
+        );
+    }
+
+    /**
+     * Backward compatibility wrapper for clampToCanvas
+     * @deprecated Use particleSpawner.clampToCanvas instead
+     */
+    clampToCanvas(x, y, canvasWidth, canvasHeight, margin = 30) {
+        if (!this._deprecationWarned_clampToCanvas) {
+            this._deprecationWarned_clampToCanvas = true;
+            console.warn('[ParticleSystem] clampToCanvas() is deprecated. Use particleSpawner.clampToCanvas() instead.');
+        }
+        return this.particleSpawner.clampToCanvas(x, y, canvasWidth, canvasHeight, margin);
+    }
+
+    /**
+     * Spawns a single particle with the specified behavior
+     * @param {string} behavior - Particle behavior type
+     * @param {number} centerX - Center X coordinate
+     * @param {number} centerY - Center Y coordinate
+     */
+    spawnSingleParticle(behavior, centerX, centerY) {
+        // Hard limit check to prevent memory leaks
+        if (this.particles.length >= this.absoluteMaxParticles) {
+            return;
+        }
+
+        // Calculate spawn position based on behavior using ParticleSpawner
+        // Pass canvas size for proper calculation when mascot is offset
+        const canvasWidth = this.canvasWidth || centerX * 2;
+        const canvasHeight = this.canvasHeight || centerY * 2;
+        const spawnPos = this.particleSpawner.getSpawnPosition(
+            behavior,
+            centerX,
+            centerY,
+            canvasWidth,
+            canvasHeight,
+            this.currentEmotion
+        );
+
+        // CLAMP spawn position to canvas boundaries
+        const clampedPos = this.particleSpawner.clampToCanvas(
+            spawnPos.x,
+            spawnPos.y,
+            canvasWidth,
+            canvasHeight
+        );
+        spawnPos.x = clampedPos.x;
+        spawnPos.y = clampedPos.y;
+
+        // Get particle from pool
+        const particle = this.getParticleFromPool(spawnPos.x, spawnPos.y, behavior);
+
+        // Pass additional data for meditation_swirl
+        if (behavior === 'meditation_swirl' && spawnPos.palmCenter) {
+            particle.palmCenter = spawnPos.palmCenter;
+            particle.swirlAngle = spawnPos.swirlAngle;
+        }
+
+        // Add to active particles
+        this.particles.push(particle);
+        this.particleCount++;
+
+    }
+
+    /**
+     * Updates all particles and manages lifecycle
+     * @param {number} deltaTime - Time since last update in milliseconds
+     * @param {number} centerX - Center X coordinate for behavior calculations
+     * @param {number} centerY - Center Y coordinate for behavior calculations
+     * @param {Object} gestureMotion - Optional gesture motion to apply
+     * @param {number} gestureProgress - Progress of gesture (0-1)
+     * @param {Object} undertoneModifier - Optional undertone modifications
+     */
+    update(
+        deltaTime,
+        centerX,
+        centerY,
+        gestureMotion = null,
+        gestureProgress = 0,
+        undertoneModifier = null
+    ) {
+        if (this.errorBoundary) {
+            const wrappedUpdate = this.errorBoundary.wrap(
+                (dt, cx, cy, gm, gp, um) => this._update(dt, cx, cy, gm, gp, um),
+                'particle-update'
+            );
+            return wrappedUpdate(
+                deltaTime,
+                centerX,
+                centerY,
+                gestureMotion,
+                gestureProgress,
+                undertoneModifier
+            );
+        } else {
+            this._update(
+                deltaTime,
+                centerX,
+                centerY,
+                gestureMotion,
+                gestureProgress,
+                undertoneModifier
+            );
+        }
+    }
+
+    /**
+     * Internal update implementation
+     */
+    _update(
+        deltaTime,
+        centerX,
+        centerY,
+        gestureMotion = null,
+        gestureProgress = 0,
+        undertoneModifier = null
+    ) {
+        // PERFORMANCE OPTIMIZATION: Skip cleanup for small particle counts
+        // 50 particles don't need periodic cleanup overhead
+        // Cleanup is unnecessary for such small numbers
+
+        // PERFORMANCE OPTIMIZATION: Skip memory leak detection for small particle counts
+        // 50 particles don't need memory tracking overhead
+        // Memory leaks aren't a concern with such small numbers
+
+        // Update particles and remove dead ones in-place (no allocation)
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            this.particles[i].update(
+                deltaTime,
+                centerX,
+                centerY,
+                undertoneModifier,
+                gestureMotion,
+                gestureProgress,
+                this.containmentBounds
+            );
+            if (!this.particles[i].isAlive()) {
+                this.removeParticle(i);
+            }
+        }
+
+        // Enforce particle limit by removing oldest if necessary
+        while (this.particles.length > this.maxParticles) {
+            this.removeParticle(0); // Remove oldest (first in array)
+        }
+    }
+
+    /**
+     * Set a temporary gesture behavior for particles
+     * @param {string} behaviorName - Name of the behavior (e.g., 'doppler')
+     * @param {boolean} active - Whether the behavior is active
+     */
+    setGestureBehavior(behaviorName, active) {
+        this.gestureBehavior = active ? behaviorName : null;
+
+        // Apply gesture behavior to existing particles
+        if (active) {
+            this.particles.forEach(particle => {
+                particle.gestureBehavior = behaviorName;
+            });
+        } else {
+            // Clear gesture behavior from particles
+            this.particles.forEach(particle => {
+                particle.gestureBehavior = null;
+            });
+        }
+    }
+
+    /**
+     * Removes a particle at the specified index
+     * @param {number} index - Index of particle to remove
+     */
+    removeParticle(index) {
+        if (index >= 0 && index < this.particles.length) {
+            const particle = this.particles.splice(index, 1)[0];
+            // Clear any cached data before returning to pool
+            particle.cachedGradient = null;
+            particle.cachedGradientKey = null;
+            // Don't set behaviorData to null - let reset handle it properly
+            this.returnParticleToPool(particle);
+            this.particleCount = Math.max(0, this.particleCount - 1);
+        }
+    }
+
+    /**
+     * Renders all particles to the canvas context
+     * @param {CanvasRenderingContext2D} ctx - Canvas rendering context
+     * @param {string} emotionColor - Color to use for particle rendering
+     * @param {Object} gestureTransform - Optional gesture transform data
+     */
+    render(ctx, emotionColor = '#ffffff', gestureTransform = null) {
+        if (this.errorBoundary) {
+            return this.errorBoundary.wrap(() => {
+                this._render(ctx, emotionColor, gestureTransform);
+            }, 'particle-render')();
+        } else {
+            this._render(ctx, emotionColor, gestureTransform);
+        }
+    }
+
+    /**
+     * Renders particles in the background layer (behind orb)
+     * Particles with z < 0 are rendered, appearing smaller based on depth
+     *
+     * @param {CanvasRenderingContext2D} ctx - Canvas rendering context
+     * @param {string} emotionColor - Color to use for particle rendering
+     *
+     * LAYER DISTRIBUTION:
+     * - ~92% of particles render in background (z < 0)
+     * - Particles scale from 80% to 100% size based on z-depth
+     */
+    renderBackground(ctx, emotionColor = '#ffffff', gestureTransform = null) {
+        if (this.errorBoundary) {
+            return this.errorBoundary.wrap(() => {
+                this._renderLayer(ctx, emotionColor, false, gestureTransform); // false = background (z < 0)
+            }, 'particle-render-bg')();
+        } else {
+            this._renderLayer(ctx, emotionColor, false, gestureTransform);
+        }
+    }
+
+    /**
+     * Renders particles in the foreground layer (in front of orb)
+     * Particles with z >= 0 are rendered, appearing larger based on depth
+     *
+     * @param {CanvasRenderingContext2D} ctx - Canvas rendering context
+     * @param {string} emotionColor - Color to use for particle rendering
+     *
+     * LAYER DISTRIBUTION:
+     * - ~8% of particles render in foreground (z >= 0)
+     * - Particles scale from 100% to 120% size based on z-depth
+     * - Spawn with offset to prevent visual stacking
+     */
+    renderForeground(ctx, emotionColor = '#ffffff', gestureTransform = null) {
+        if (this.errorBoundary) {
+            return this.errorBoundary.wrap(() => {
+                this._renderLayer(ctx, emotionColor, true, gestureTransform); // true = foreground (z >= 0)
+            }, 'particle-render-fg')();
+        } else {
+            this._renderLayer(ctx, emotionColor, true, gestureTransform);
+        }
+    }
+
+    /**
+     * Internal render implementation for a specific layer
+     * @param {CanvasRenderingContext2D} ctx - Canvas rendering context
+     * @param {string} emotionColor - Color to use for particle rendering
+     * @param {boolean} isForeground - true for foreground (z >= 0), false for background (z < 0)
+     */
+    _renderLayer(ctx, emotionColor, isForeground, gestureTransform = null) {
+        // Delegate to ParticleRenderer
+        this.particleRenderer.renderLayer(
+            ctx,
+            this.particles,
+            emotionColor,
+            isForeground,
+            gestureTransform
+        );
+    }
+
+    /**
+     * Internal render implementation - batch optimized rendering (legacy, renders all)
+     */
+    _render(ctx, emotionColor, gestureTransform = null) {
+        // Delegate to ParticleRenderer
+        this.particleRenderer.render(ctx, this.particles, emotionColor, gestureTransform);
+    }
+
+    /**
+     * Handle visibility resume after tab was hidden
+     * Manages particle count based on how long the tab was hidden
+     * @param {number} gapMs - Time in milliseconds the tab was hidden
+     * @param {number} [pausedCount] - Optional: particle count when paused (for gradual reduction)
+     */
+    onVisibilityResume(gapMs, pausedCount = null) {
+        // Reset spawn accumulator to prevent particle burst on resume
+        this.resetAccumulator();
+
+        // Determine action based on gap duration
+        if (gapMs > VISIBILITY.LONG_PAUSE_THRESHOLD) {
+            // Very long gap (30+ seconds): clear all particles for clean slate
+            this.clear();
+        } else if (gapMs > VISIBILITY.MEDIUM_PAUSE_THRESHOLD) {
+            // Medium gap (10-30 seconds): reduce particle count gradually
+            const currentCount = this.particles.length;
+            const referenceCount = pausedCount ?? currentCount;
+            const targetCount = Math.max(
+                VISIBILITY.MIN_PARTICLES_AFTER_REDUCTION,
+                Math.floor(referenceCount * VISIBILITY.PARTICLE_REDUCTION_FACTOR)
+            );
+
+            // Remove oldest particles until we reach target
+            while (this.particles.length > targetCount) {
+                this.removeParticle(0); // Remove oldest (first in array)
+            }
+        }
+        // Short gaps (<MEDIUM_PAUSE_THRESHOLD): keep all particles, just reset accumulator
+    }
+
+    /**
+     * Clears all particles and returns them to the pool
+     */
+    clear() {
+        this.stateChangeCount++;
+
+        // Return all particles to pool but avoid duplicates
+        while (this.particles.length > 0) {
+            const particle = this.particles.pop();
+            // Clear cached data before returning
+            if (particle.cachedColors) {
+                particle.cachedColors.clear();
+            }
+            // Clear behaviorData properties but keep the object
+            if (particle.behaviorData) {
+                for (const key in particle.behaviorData) {
+                    delete particle.behaviorData[key];
+                }
+            }
+            // Only add to pool if it's not already there and pool has space
+            if (this.pool.length < this.poolSize && !this.pool.includes(particle)) {
+                this.pool.push(particle);
+            }
+        }
+
+        this.particles.length = 0;
+        this.particleCount = 0;
+        this.spawnAccumulator = 0; // Reset accumulator when clearing
+
+        // Trim pool if it's grown too large
+        if (this.pool.length > this.poolSize) {
+            // Actually remove excess particles from pool
+            const excess = this.pool.length - this.poolSize;
+            this.pool.splice(this.poolSize, excess);
+        }
+    }
+
+    /**
+     * Triggers a burst of particles for gesture effects
+     * @param {number} count - Number of particles to burst
+     * @param {string} behavior - Behavior type for burst particles
+     * @param {number} centerX - Center X coordinate
+     * @param {number} centerY - Center Y coordinate
+     */
+    burst(count, behavior, centerX, centerY) {
+        if (this.errorBoundary) {
+            return this.errorBoundary.wrap(() => {
+                this._burst(count, behavior, centerX, centerY);
+            }, 'particle-burst')();
+        } else {
+            this._burst(count, behavior, centerX, centerY);
+        }
+    }
+
+    /**
+     * Internal burst implementation
+     */
+    _burst(count, behavior, centerX, centerY) {
+        const actualCount = Math.min(count, this.maxParticles - this.particles.length);
+
+        for (let i = 0; i < actualCount; i++) {
+            this.spawnSingleParticle(behavior, centerX, centerY);
+        }
+    }
+
+    /**
+     * Performs periodic cleanup to prevent memory buildup
+     */
+    performCleanup() {
+        // Trim pool if it's grown too large
+        if (this.pool.length > this.poolSize) {
+            // Clear excess particles from pool
+            const excess = this.pool.length - this.poolSize;
+            for (let i = 0; i < excess; i++) {
+                const particle = this.pool.pop();
+                // Ensure all references are cleared
+                if (particle) {
+                    particle.cachedGradient = null;
+                    particle.cachedGradientKey = null;
+                    particle.behaviorData = null;
+                }
+            }
+        }
+
+        // Clear any cached data from active particles
+        for (const particle of this.particles) {
+            if (particle.cachedGradient && particle.life < 0.5) {
+                // Clear gradient cache for fading particles
+                particle.cachedGradient = null;
+                particle.cachedGradientKey = null;
+            }
+        }
+    }
+
+    /**
+     * Gets current particle system statistics
+     * @returns {Object} Performance and state information
+     */
+    getStats() {
+        return {
+            activeParticles: this.particles.length,
+            maxParticles: this.maxParticles,
+            poolSize: this.pool.length,
+            poolHits: this.poolHits,
+            poolMisses: this.poolMisses,
+            poolEfficiency: this.poolHits / Math.max(1, this.poolHits + this.poolMisses),
+            spawnAccumulator: this.spawnAccumulator,
+        };
+    }
+
+    /**
+     * Sets the maximum number of particles
+     * @param {number} maxParticles - New maximum particle count
+     */
+    setMaxParticles(maxParticles) {
+        this.originalMaxParticles = this.originalMaxParticles || this.maxParticles;
+        this.maxParticles = Math.max(1, maxParticles);
+
+        // Remove excess particles if new limit is lower
+        while (this.particles.length > this.maxParticles) {
+            this.removeParticle(0);
+        }
+    }
+
+    /**
+     * Cleans up dead particles and optimizes the pool
+     */
+    cleanupDeadParticles() {
+        // Remove any dead particles that shouldn't be there
+        const beforeCount = this.particles.length;
+        this.particles = this.particles.filter(particle => particle.isAlive());
+        const removed = beforeCount - this.particles.length;
+
+        // Clear excess items from the pool to free memory
+        if (this.pool.length > 20) {
+            this.pool.length = 20;
+        }
+
+        return removed;
+    }
+
+    /**
+     * Gets particles by behavior type for debugging
+     * @param {string} behavior - Behavior type to filter by
+     * @returns {Array} Particles with matching behavior
+     */
+    getParticlesByBehavior(behavior) {
+        return this.particles.filter(particle => particle.behavior === behavior);
+    }
+
+    /**
+     * Validates that all particles are in valid state
+     * @returns {boolean} True if all particles are valid
+     */
+    validateParticles() {
+        for (const particle of this.particles) {
+            if (!particle.isAlive() || particle.life < 0 || particle.life > 1) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Forces cleanup of dead particles (for testing)
+     */
+    cleanup() {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            if (!this.particles[i].isAlive()) {
+                this.removeParticle(i);
+            }
+        }
+    }
+
+    /**
+     * Refreshes the particle pool by discarding all pooled particles
+     * Used when scale changes to ensure new particles use updated scale factor
+     */
+    refreshPool() {
+        // Delegate to ParticlePool and clear its stats
+        this.particlePool.clear();
+
+        // Also kill all active particles so they'll be replaced with properly scaled ones
+        for (const particle of this.particles) {
+            particle.life = 0; // Mark as dead - they'll be filtered out on next update
+        }
+    }
+
+    /**
+     * Set containment bounds for particles
+     * @param {Object|null} bounds - {width, height} in pixels, or null to disable containment
+     */
+    setContainmentBounds(bounds) {
+        this.containmentBounds = bounds;
+    }
+
+    /**
+     * Destroys the particle system and cleans up resources
+     */
+    destroy() {
+        this.clear();
+        this.particlePool.clear();
+        // ParticleSystem destroyed
+    }
+}
+
+export default ParticleSystem;

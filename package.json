@@ -1,0 +1,67 @@
+{
+    "name": "emotive-hex-agent",
+    "version": "0.1.0",
+    "description": "An extreme-lean build of the Emotive Engine for the Hex Cluster agent: one gem crystal, electric moments, stripped gestures, Blender-made assets.",
+    "type": "module",
+    "private": true,
+    "license": "MIT",
+    "author": "One Thousand Drones LLC (new work); Joshua Tollette (Emotive Engine)",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Otd-llc/emotive-hex-agent.git"
+    },
+    "engines": {
+        "node": ">=20.0.0"
+    },
+    "sideEffects": [
+        "src/3d/effects/ElementRegistrations.js",
+        "src/3d/effects/elements/*.js",
+        "src/core/gestures/elemental-gestures.js",
+        "src/core/gestures/elemental/*/register.js",
+        "**/ElementRegistrations.js",
+        "**/effects/elements/*.js",
+        "**/elemental-gestures.js",
+        "**/elemental/*/register.js"
+    ],
+    "scripts": {
+        "build": "rollup -c --environment NODE_ENV:production",
+        "build:dev": "rollup -c --environment NODE_ENV:development",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:unit": "vitest run test/unit",
+        "lint": "eslint src/**/*.js",
+        "lint:fix": "eslint src/**/*.js --fix",
+        "format": "prettier --write \"src/**/*.{js,json}\"",
+        "format:check": "prettier --check \"src/**/*.{js,json}\"",
+        "clean": "node -e \"import('fs').then(fs => fs.rmSync('dist', {recursive: true, force: true}))\""
+    },
+    "peerDependencies": {
+        "three": "~0.170.0"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.0",
+        "@gltf-transform/cli": "^4.3.0",
+        "@rollup/plugin-commonjs": "^29.0.2",
+        "@rollup/plugin-node-resolve": "^16.0.3",
+        "@rollup/plugin-terser": "^1.0.0",
+        "@vitest/coverage-v8": "^4.1.0",
+        "canvas": "^3.2.0",
+        "eslint": "^10.0.3",
+        "eslint-config-prettier": "^10.1.8",
+        "gif.js": "^0.2.0",
+        "html-minifier-terser": "^7.2.0",
+        "jsdoc": "^4.0.4",
+        "jsdoc-to-markdown": "^9.1.2",
+        "jsdom": "^29.0.0",
+        "prettier": "^3.6.2",
+        "rollup": "^4.9.5",
+        "rollup-plugin-analyzer": "^4.0.0",
+        "rollup-plugin-bundle-size": "^1.0.3",
+        "rollup-plugin-visualizer": "^7.0.1",
+        "terser": "^5.46.1",
+        "typedoc": "^0.28.16",
+        "typedoc-plugin-markdown": "^4.11.0",
+        "vitest": "^4.1.0",
+        "three": "0.170.0"
+    }
+}

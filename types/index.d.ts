@@ -1,0 +1,1353 @@
+// Type definitions for @joshtol/emotive-engine v3.5.0
+// Project: https://github.com/joshtol/emotive-engine
+// Definitions by: Emotive Engine Team
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DIRECT EXPORTS (Modern TypeScript - Recommended)
+// Usage: import { EmotiveMascot, type EmotiveMascotConfig } from '@joshtol/emotive-engine'
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Core Type Aliases (used by core.d.ts for internal system interfaces)
+export type EmotionType = string;
+export type UndertoneType = string;
+export type GestureType = string;
+export type ParticleBehaviorType = 'float' | 'popcorn' | 'rain' | 'orbit' | 'spiral' | 'drift' | 'pulse';
+export type EmotionalProperties = VisualParams;
+export interface AudioStats {
+    isActive: boolean;
+    currentLevel: number;
+    historySize: number;
+    maxHistorySize: number;
+    lastSpikeTime: number;
+    timeSinceLastSpike: number;
+    averageLevel: number;
+}
+export interface ParticleStats {
+    activeParticles: number;
+    maxParticles: number;
+    poolSize: number;
+    poolHits: number;
+    poolMisses: number;
+    poolEfficiency: number;
+    spawnAccumulator: number;
+}
+
+// Core Types
+export interface EmotiveMascotConfig {
+    canvas?: HTMLCanvasElement;
+    canvasId?: string | HTMLCanvasElement;
+    width?: number;
+    height?: number;
+    autoStart?: boolean;
+    fps?: number;
+    targetFPS?: number;
+    adaptive?: boolean;
+    theme?: Theme;
+    enableAudio?: boolean;
+    enableParticles?: boolean;
+    enableGazeTracking?: boolean;
+    defaultEmotion?: string;
+}
+
+export interface Theme {
+    primary?: string;
+    secondary?: string;
+    accent?: string;
+    background?: string;
+    particles?: string[];
+    core?: string;
+    glow?: string;
+}
+
+export interface FeelResult {
+    success: boolean;
+    error: string | null;
+    parsed: ParsedIntent | null;
+}
+
+export interface ParsedIntent {
+    emotion: string | null;
+    gestures: string[];
+    shape: string | null;
+    undertone: string | null;
+    intensity: number;
+}
+
+export interface FeelVocabulary {
+    emotions: string[];
+    undertones: string[];
+    gestures: string[];
+    shapes: string[];
+}
+
+export interface EmotionalState {
+    valence: number;
+    arousal: number;
+    dominance?: number;
+}
+
+export interface PerformanceMetrics {
+    fps: number;
+    frameTime: number;
+    particleCount?: number;
+}
+
+export interface GazeState {
+    x: number;
+    y: number;
+    enabled: boolean;
+}
+
+export interface BackdropOptions {
+    enabled?: boolean;
+    radius?: number;
+    shape?: 'circle' | 'ellipse' | 'fullscreen';
+    color?: string;
+    intensity?: number;
+    blendMode?: 'normal' | 'multiply' | 'overlay' | 'screen';
+    falloff?: 'linear' | 'smooth' | 'exponential' | 'custom';
+    falloffCurve?: Array<{ stop: number; alpha: number }>;
+    edgeSoftness?: number;
+    coreTransparency?: number;
+    blur?: number;
+    responsive?: boolean;
+    pulse?: boolean;
+    offset?: { x: number; y: number };
+    type?: 'radial-gradient' | 'vignette' | 'glow';
+}
+
+export interface AttachOptions {
+    offsetX?: number;
+    offsetY?: number;
+    animate?: boolean;
+    duration?: number;
+    scale?: number;
+    containParticles?: boolean;
+}
+
+export interface ScaleOptions {
+    global?: number;
+    core?: number;
+    particles?: number;
+}
+
+export interface TimelineEvent {
+    type: 'emotion' | 'gesture' | 'shape';
+    name: string;
+    time: number;
+    undertone?: string;
+    config?: any;
+}
+
+export interface Capabilities {
+    audio: boolean;
+    recording: boolean;
+    timeline: boolean;
+    export: boolean;
+    shapes: boolean;
+    gestures: boolean;
+    emotions: boolean;
+    particles: boolean;
+    gazeTracking: boolean;
+}
+
+export interface AudioAnalysis {
+    beats?: any;
+    tempo?: number;
+    energy?: number;
+}
+
+// Particle Types
+export interface ParticleConfig {
+    count?: number;
+    size?: number | [number, number];
+    speed?: number | [number, number];
+    life?: number | [number, number];
+    color?: string | string[];
+    shape?: 'circle' | 'square' | 'star' | 'triangle';
+    emissionRate?: number;
+    gravity?: number;
+    wind?: [number, number];
+}
+
+// Animation Types
+export interface AnimationStats {
+    fps: number;
+    frameTime: number;
+    callbackCount: number;
+    totalCallbacks: number;
+    droppedFrames: number;
+    isRunning: boolean;
+}
+
+export interface AnimationCallback {
+    (deltaTime: number, timestamp: number): void;
+}
+
+export enum AnimationPriority {
+    CRITICAL = 0,
+    HIGH = 1,
+    MEDIUM = 2,
+    LOW = 3,
+    IDLE = 4
+}
+
+// Cache Types
+export interface GradientStop {
+    offset: number;
+    color: string;
+}
+
+export interface CacheStats {
+    hits: number;
+    misses: number;
+    evictions: number;
+    size: number;
+    maxSize: number;
+    hitRate: number;
+}
+
+// Event Types
+export interface EmotiveEvent {
+    type: string;
+    data?: any;
+    timestamp: number;
+}
+
+export type EmotiveEventHandler = (event: EmotiveEvent) => void;
+
+// Emotion/Gesture Plugin Types
+export interface VisualParams {
+    glowColor: string;
+    particleRate: number;
+    minParticles?: number;
+    maxParticles?: number;
+    particleBehavior?: 'float' | 'popcorn' | 'rain' | 'orbit' | 'spiral' | 'drift' | 'pulse';
+    breathRate?: number;
+    breathDepth?: number;
+    coreJitter?: boolean;
+    blinkRate?: number;
+    blinkSpeed?: number;
+    particleColors?: Array<{ color: string; weight: number }>;
+}
+
+export interface GestureModifiers {
+    speed?: number;
+    amplitude?: number;
+    intensity?: number;
+    smoothness?: number;
+    regularity?: number;
+    addBounce?: boolean;
+}
+
+export interface TransitionConfig {
+    duration?: number;
+    easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'easeOutBack' | 'easeOutBounce';
+    priority?: number;
+    burstOnEntry?: boolean;
+}
+
+export interface EmotionConfig {
+    name: string;
+    emoji?: string;
+    description?: string;
+    visual: VisualParams;
+    modifiers?: GestureModifiers;
+    typicalGestures?: string[];
+    transitions?: TransitionConfig;
+}
+
+export interface GestureConfig {
+    name: string;
+    emoji?: string;
+    type?: 'blending' | 'replacing';
+    description?: string;
+    config: {
+        duration?: number;
+        amplitude?: number;
+        frequency?: number;
+        axis?: 'vertical' | 'horizontal' | 'both';
+        damping?: boolean;
+        easing?: string;
+        strength?: number;
+    };
+}
+
+// Main Class Export
+export class EmotiveMascot {
+    constructor(config?: EmotiveMascotConfig);
+
+    // Lifecycle
+    init(canvas: HTMLCanvasElement | string): Promise<void>;
+    start(): void;
+    stop(): void;
+    pause(): void;
+    resume(): void;
+    destroy(): void;
+
+    // LLM Integration - Natural Language API
+    feel(intent: string): FeelResult;
+    static getFeelVocabulary(): FeelVocabulary;
+    parseIntent(intent: string): ParsedIntent;
+
+    // Emotion & Expression
+    setEmotion(emotion: string, undertoneOrDurationOrOptions?: string | number | { undertone?: string; duration?: number }, timestamp?: number): void;
+    express(gestureName: string, timestamp?: number): void;
+    triggerGesture(gestureName: string, timestamp?: number): void;
+    chain(chainName: string): void;
+    updateUndertone(undertone: string | null): void;
+
+    // Shape Morphing
+    morphTo(shape: string, config?: any): void;
+    setShape(shape: string, configOrTimestamp?: any | number): void;
+
+    // Multi-Emotion Slot API
+    pushEmotion(emotion: string, intensity?: number): EmotiveMascot;
+    nudgeEmotion(emotion: string, delta: number, cap?: number): EmotiveMascot;
+    setEmotionDampening(factor: number): EmotiveMascot;
+    getEmotionDampening(): number;
+    clearEmotions(): EmotiveMascot;
+    getEmotionalState(): { dominant: string | null; undercurrents: any[]; slots: any[] };
+
+    // Snapshot / Persistence
+    getSnapshot(): any;
+    loadSnapshot(data: any): EmotiveMascot;
+
+    // Modifiers
+    applyModifier(name: string, config: any): EmotiveMascot;
+    removeModifier(name: string): EmotiveMascot;
+    getActiveModifiers(): Array<{ name: string; remaining: number | null; config: any }>;
+
+    // Stances
+    registerStance(name: string, config: any): EmotiveMascot;
+    getActiveStance(): { name: string; config: any } | null;
+    dismissStance(): EmotiveMascot;
+    getAvailableStances(): string[];
+
+    // Dynamics
+    readonly dynamics: any;
+
+    // Audio
+    loadAudio(source: string | Blob): Promise<void>;
+    connectAudio(audioElement: HTMLAudioElement): void;
+    disconnectAudio(audioElement?: HTMLAudioElement): void;
+    getAudioAnalysis(): AudioAnalysis;
+    getSpectrumData(): number[];
+    startRhythmSync(bpm?: number): void;
+    stopRhythmSync(): void;
+    setSoundEnabled(enabled: boolean): void;
+    setBPM(bpm: number): void;
+    getEffectiveBPM(): number;
+
+    // Gaze Tracking
+    enableGazeTracking(): void;
+    disableGazeTracking(): void;
+    setGazeTarget(x: number, y: number): void;
+    getGazeState(): GazeState | null;
+
+    // Positioning
+    setPosition(x: number, y: number, z?: number): void;
+    animateToPosition(x: number, y: number, z?: number, duration?: number, easing?: string): void;
+    attachToElement(elementOrSelector: string | HTMLElement, options?: AttachOptions): EmotiveMascot;
+    detachFromElement(): void;
+    isAttachedToElement(): boolean;
+    setContainment(bounds: { width: number; height: number } | null, scale?: number): void;
+
+    // Visual Customization
+    setScale(scaleOrOptions: number | ScaleOptions): EmotiveMascot;
+    getScale(): number;
+    setOpacity(opacity: number): EmotiveMascot;
+    getOpacity(): number;
+    fadeIn(duration?: number): EmotiveMascot;
+    fadeOut(duration?: number): EmotiveMascot;
+    setColor(color: string): EmotiveMascot;
+    setGlowColor(color: string): EmotiveMascot;
+    setTheme(theme: Theme): EmotiveMascot;
+    setBackdrop(options: BackdropOptions): EmotiveMascot;
+    getBackdrop(): BackdropOptions | null;
+
+    // Particles
+    clearParticles(): void;
+    setMaxParticles(maxParticles: number): EmotiveMascot;
+    getParticleCount(): number;
+    setParticleSystemCanvasDimensions(width: number, height: number): EmotiveMascot;
+
+    // Performance
+    setQuality(level: 'low' | 'medium' | 'high'): void;
+    setSpeed(speed: number): EmotiveMascot;
+    getSpeed(): number;
+    setFPS(fps: number): EmotiveMascot;
+    getFPS(): number;
+    isPaused(): boolean;
+    getPerformanceMetrics(): PerformanceMetrics;
+    batch(callback: (mascot: EmotiveMascot) => void): EmotiveMascot;
+
+    // Timeline Recording
+    startRecording(): void;
+    stopRecording(): TimelineEvent[];
+    playTimeline(timeline: TimelineEvent[]): void;
+    stopPlayback(): void;
+    getTimeline(): TimelineEvent[];
+    loadTimeline(timeline: TimelineEvent[]): void;
+    exportTimeline(): string;
+    importTimeline(json: string): void;
+    getCurrentTime(): number;
+    seek(time: number): void;
+
+    // Export
+    getFrameData(format?: string): string;
+    getFrameBlob(format?: string): Promise<Blob>;
+    getAnimationData(): any;
+
+    // Query
+    getAvailableGestures(): string[];
+    getAvailableEmotions(): string[];
+    getAvailableShapes(): string[];
+    getVersion(): string;
+    getCapabilities(): Capabilities;
+
+    // Events
+    on(event: string, handler: Function): EmotiveMascot;
+    off(event: string, handler?: Function): EmotiveMascot;
+    once(event: string, callback: Function): EmotiveMascot;
+    emit(event: string, data?: any): void;
+    removeAllListeners(event?: string | null): EmotiveMascot;
+    listenerCount(event: string): number;
+    getEventNames(): string[];
+
+    // Audio / Speech
+    setVolume(volume: number): EmotiveMascot;
+    getVolume(): number;
+    startSpeaking(audioContext: AudioContext): EmotiveMascot;
+    stopSpeaking(): EmotiveMascot;
+    isSpeaking(): boolean;
+    connectAudioSource(audioSource: any): EmotiveMascot;
+
+    // Breathing
+    breathe(type?: string): EmotiveMascot;
+    stopBreathing(): EmotiveMascot;
+
+    // State
+    sleep(): EmotiveMascot;
+    wake(): EmotiveMascot;
+    isActive(): boolean;
+    getPosition(): { x: number; y: number } | null;
+    setOffset(x: number, y: number, z?: number): EmotiveMascot;
+    getOffset(): { x: number; y: number; z: number };
+
+    // Performance
+    setTargetFPS(targetFPS: number): EmotiveMascot;
+    getTargetFPS(): number;
+
+    // Plugin
+    registerPlugin(plugin: any): Promise<boolean>;
+
+    // Accessibility
+    setAccessibility(options: { colorBlindMode?: string; reducedMotion?: boolean; highContrast?: boolean }): void;
+
+    // Resize Handling
+    handleResize(width: number, height: number, dpr?: number): void;
+
+    // Component access (safe proxies)
+    readonly renderer: any;
+    readonly shapeMorpher: any;
+    readonly gazeTracker: any;
+    readonly canvas: HTMLCanvasElement;
+}
+
+// Site Controller
+export class SiteController {
+    constructor(options?: { mascot?: any; onError?: (error: Error) => void });
+    mascot: any;
+    updateMascot(mascot: any): SiteController;
+    readonly positionController: any | null;
+    getElementTargeting(): any | null;
+    moveToElement(selector: string, options?: { offset?: { x: number; y: number }; speed?: number; easing?: string; coordinateSystem?: string }): any;
+    moveToElementWithPath(selector: string, pathPoints?: Array<{ x: number; y: number }>, alignment?: 'center' | 'start' | 'end', offset?: { x: number; y: number }, options?: { speed?: number; easing?: string; coordinateSystem?: string }): any;
+    setOffset(x: number, y: number, z?: number): void;
+    getOffset(): { x: number; y: number };
+    setEmotion(emotion: string): void;
+    express(gesture: string, options?: { chain?: boolean }): void;
+    stop(): void;
+    play(): void;
+    destroy(): void;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NAMESPACE EXPORTS (Legacy/UMD Compatibility)
+// Usage: import EmotiveEngine from '@joshtol/emotive-engine'
+//        const mascot = new EmotiveEngine.EmotiveMascot()
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export as namespace EmotiveEngine;
+
+declare namespace EmotiveEngine {
+    // Animation Loop Manager
+    export enum AnimationPriority {
+        CRITICAL = 0,
+        HIGH = 1,
+        MEDIUM = 2,
+        LOW = 3,
+        IDLE = 4
+    }
+
+    export interface AnimationCallback {
+        (deltaTime: number, timestamp: number): void;
+    }
+
+    export interface AnimationStats {
+        fps: number;
+        frameTime: number;
+        callbackCount: number;
+        totalCallbacks: number;
+        droppedFrames: number;
+        isRunning: boolean;
+    }
+
+    export class AnimationLoopManager {
+        constructor();
+        register(callback: AnimationCallback, priority?: AnimationPriority, context?: any): number;
+        unregister(id: number): boolean;
+        setPriority(id: number, priority: AnimationPriority): boolean;
+        setEnabled(id: number, enabled: boolean): boolean;
+        start(): void;
+        stop(): void;
+        pause(): void;
+        resume(): void;
+        getStats(): AnimationStats;
+        setTargetFPS(fps: number): void;
+        reset(): void;
+    }
+
+    export const animationLoopManager: AnimationLoopManager;
+
+    // Gradient Cache
+    export interface GradientStop {
+        offset: number;
+        color: string;
+    }
+
+    export interface CacheStats {
+        hits: number;
+        misses: number;
+        evictions: number;
+        size: number;
+        maxSize: number;
+        hitRate: number;
+    }
+
+    export class GradientCache {
+        constructor(maxSize?: number, ttl?: number);
+        getLinearGradient(
+            ctx: CanvasRenderingContext2D,
+            x0: number, y0: number,
+            x1: number, y1: number,
+            stops: GradientStop[]
+        ): CanvasGradient;
+        getRadialGradient(
+            ctx: CanvasRenderingContext2D,
+            x0: number, y0: number, r0: number,
+            x1: number, y1: number, r1: number,
+            stops: GradientStop[]
+        ): CanvasGradient;
+        clear(): void;
+        setMaxSize(size: number): void;
+        setTTL(ttl: number): void;
+        getStats(): CacheStats;
+        evict(count?: number): number;
+    }
+
+    export const gradientCache: GradientCache;
+
+    // Context State Manager
+    export interface ContextState {
+        fillStyle?: string | CanvasGradient | CanvasPattern;
+        strokeStyle?: string | CanvasGradient | CanvasPattern;
+        globalAlpha?: number;
+        globalCompositeOperation?: string;
+        lineWidth?: number;
+        lineCap?: CanvasLineCap;
+        lineJoin?: CanvasLineJoin;
+        shadowColor?: string;
+        shadowBlur?: number;
+        shadowOffsetX?: number;
+        shadowOffsetY?: number;
+        filter?: string;
+    }
+
+    export class ContextStateManager {
+        constructor(ctx: CanvasRenderingContext2D);
+        setState(state: ContextState): number;
+        pushState(state?: ContextState): void;
+        popState(): void;
+        reset(): void;
+        scoped<T>(state: ContextState, callback: () => T): T;
+        getChangeCount(): number;
+        getRedundantChanges(): number;
+        resetStats(): void;
+    }
+
+    // Event Manager
+    export interface EventListenerInfo {
+        id: number;
+        target: EventTarget;
+        eventType: string;
+        handler: EventListener;
+        options?: AddEventListenerOptions;
+        group: string;
+        active: boolean;
+    }
+
+    export interface LeakAnalysis {
+        totalListeners: number;
+        byGroup: Record<string, number>;
+        byEventType: Record<string, number>;
+        potentialLeaks: EventListenerInfo[];
+    }
+
+    export interface AutoRemoveController {
+        remove(): void;
+    }
+
+    export class EventManager {
+        constructor();
+        addEventListener(
+            target: EventTarget,
+            eventType: string,
+            handler: EventListener,
+            options?: AddEventListenerOptions,
+            group?: string
+        ): number;
+        removeEventListener(id: number): boolean;
+        removeGroup(group: string): number;
+        removeAll(): void;
+        getActiveListeners(): EventListenerInfo[];
+        analyzeLeaks(): LeakAnalysis;
+        once(
+            target: EventTarget,
+            eventType: string,
+            handler: EventListener,
+            options?: AddEventListenerOptions
+        ): number;
+        debounced(
+            target: EventTarget,
+            eventType: string,
+            handler: EventListener,
+            delay?: number,
+            options?: AddEventListenerOptions
+        ): number;
+        throttled(
+            target: EventTarget,
+            eventType: string,
+            handler: EventListener,
+            delay?: number,
+            options?: AddEventListenerOptions
+        ): number;
+        createAutoRemove(
+            target: EventTarget,
+            eventType: string,
+            handler: EventListener,
+            options?: AddEventListenerOptions
+        ): AutoRemoveController;
+    }
+
+    export const eventManager: EventManager;
+
+    // State Store
+    export type StateValue = any;
+    export type StatePath = string;
+    export type StateUpdates = Record<string, StateValue>;
+
+    export interface StateSubscriber {
+        (state: any, changes: StateUpdates): void;
+    }
+
+    export interface ComputedFunction {
+        (...values: StateValue[]): StateValue;
+    }
+
+    export class StateStore {
+        constructor(initialState?: any);
+        getState(path?: StatePath): StateValue;
+        setState(pathOrUpdates: StatePath | StateUpdates, value?: StateValue): void;
+        subscribe(pathOrCallback: StatePath | StateSubscriber, callback?: StateSubscriber): () => void;
+        computed(name: string, dependencies: StatePath[], computeFn: ComputedFunction): void;
+        undo(): boolean;
+        reset(): void;
+        getHistory(): any[];
+        clearHistory(): void;
+    }
+
+    export const engineState: StateStore;
+
+    // Main Emotive Mascot
+    export interface EmotiveMascotConfig {
+        canvas?: HTMLCanvasElement;
+        canvasId?: string | HTMLCanvasElement;
+        width?: number;
+        height?: number;
+        autoStart?: boolean;
+        fps?: number;
+        targetFPS?: number;
+        adaptive?: boolean;
+        theme?: Theme;
+        enableAudio?: boolean;
+        enableParticles?: boolean;
+        enableGazeTracking?: boolean;
+        defaultEmotion?: string;
+    }
+
+    export interface Theme {
+        primary?: string;
+        secondary?: string;
+        accent?: string;
+        background?: string;
+        particles?: string[];
+        core?: string;
+        glow?: string;
+    }
+
+    export interface EmotionalState {
+        valence: number;
+        arousal: number;
+        dominance?: number;
+    }
+
+    export interface FeelResult {
+        success: boolean;
+        error: string | null;
+        parsed: ParsedIntent | null;
+    }
+
+    export interface ParsedIntent {
+        emotion: string | null;
+        gestures: string[];
+        shape: string | null;
+        undertone: string | null;
+        intensity: number;
+    }
+
+    export interface FeelVocabulary {
+        emotions: string[];
+        undertones: string[];
+        gestures: string[];
+        shapes: string[];
+    }
+
+    export interface BackdropOptions {
+        enabled?: boolean;
+        radius?: number;
+        shape?: 'circle' | 'ellipse' | 'fullscreen';
+        color?: string;
+        intensity?: number;
+        blendMode?: 'normal' | 'multiply' | 'overlay' | 'screen';
+        falloff?: 'linear' | 'smooth' | 'exponential' | 'custom';
+        falloffCurve?: Array<{ stop: number; alpha: number }>;
+        edgeSoftness?: number;
+        coreTransparency?: number;
+        blur?: number;
+        responsive?: boolean;
+        pulse?: boolean;
+        offset?: { x: number; y: number };
+        type?: 'radial-gradient' | 'vignette' | 'glow';
+    }
+
+    export interface AttachOptions {
+        offsetX?: number;
+        offsetY?: number;
+        animate?: boolean;
+        duration?: number;
+        scale?: number;
+        containParticles?: boolean;
+    }
+
+    export interface PerformanceMetrics {
+        fps: number;
+        frameTime: number;
+        particleCount?: number;
+    }
+
+    export interface AudioAnalysis {
+        beats?: any;
+        tempo?: number;
+        energy?: number;
+    }
+
+    export interface GazeState {
+        x: number;
+        y: number;
+        enabled: boolean;
+    }
+
+    export interface Capabilities {
+        audio: boolean;
+        recording: boolean;
+        timeline: boolean;
+        export: boolean;
+        shapes: boolean;
+        gestures: boolean;
+        emotions: boolean;
+        particles: boolean;
+        gazeTracking: boolean;
+    }
+
+    export interface TimelineEvent {
+        type: 'emotion' | 'gesture' | 'shape';
+        name: string;
+        time: number;
+        undertone?: string;
+        config?: any;
+    }
+
+    export interface ScaleOptions {
+        global?: number;
+        core?: number;
+        particles?: number;
+    }
+
+    export class EmotiveMascot {
+        constructor(config?: EmotiveMascotConfig);
+
+        // Lifecycle
+        init(canvas: HTMLCanvasElement | string): Promise<void>;
+        start(): void;
+        stop(): void;
+        pause(): void;
+        resume(): void;
+        destroy(): void;
+
+        // LLM Integration - Natural Language API
+        feel(intent: string): FeelResult;
+        static getFeelVocabulary(): FeelVocabulary;
+        parseIntent(intent: string): ParsedIntent;
+
+        // Emotion & Expression
+        setEmotion(emotion: string, undertoneOrDurationOrOptions?: string | number | { undertone?: string; duration?: number }, timestamp?: number): void;
+        express(gestureName: string, timestamp?: number): void;
+        triggerGesture(gestureName: string, timestamp?: number): void;
+        chain(chainName: string): void;
+        updateUndertone(undertone: string | null): void;
+
+        // Shape Morphing
+        morphTo(shape: string, config?: any): void;
+        setShape(shape: string, configOrTimestamp?: any | number): void;
+
+        // Multi-Emotion Slot API
+        pushEmotion(emotion: string, intensity?: number): EmotiveMascot;
+        nudgeEmotion(emotion: string, delta: number, cap?: number): EmotiveMascot;
+        setEmotionDampening(factor: number): EmotiveMascot;
+        getEmotionDampening(): number;
+        clearEmotions(): EmotiveMascot;
+        getEmotionalState(): { dominant: string | null; undercurrents: any[]; slots: any[] };
+
+        // Snapshot / Persistence
+        getSnapshot(): any;
+        loadSnapshot(data: any): EmotiveMascot;
+
+        // Modifiers
+        applyModifier(name: string, config: any): EmotiveMascot;
+        removeModifier(name: string): EmotiveMascot;
+        getActiveModifiers(): Array<{ name: string; remaining: number | null; config: any }>;
+
+        // Stances
+        registerStance(name: string, config: any): EmotiveMascot;
+        getActiveStance(): { name: string; config: any } | null;
+        dismissStance(): EmotiveMascot;
+        getAvailableStances(): string[];
+
+        // Dynamics
+        readonly dynamics: any;
+
+        // Audio
+        loadAudio(source: string | Blob): Promise<void>;
+        connectAudio(audioElement: HTMLAudioElement): void;
+        disconnectAudio(audioElement?: HTMLAudioElement): void;
+        getAudioAnalysis(): AudioAnalysis;
+        getSpectrumData(): number[];
+        startRhythmSync(bpm?: number): void;
+        stopRhythmSync(): void;
+        setSoundEnabled(enabled: boolean): void;
+        setBPM(bpm: number): void;
+        getEffectiveBPM(): number;
+
+        // Gaze Tracking
+        enableGazeTracking(): void;
+        disableGazeTracking(): void;
+        setGazeTarget(x: number, y: number): void;
+        getGazeState(): GazeState | null;
+
+        // Positioning
+        setPosition(x: number, y: number, z?: number): void;
+        animateToPosition(x: number, y: number, z?: number, duration?: number, easing?: string): void;
+        attachToElement(elementOrSelector: string | HTMLElement, options?: AttachOptions): EmotiveMascot;
+        detachFromElement(): void;
+        isAttachedToElement(): boolean;
+        setContainment(bounds: { width: number; height: number } | null, scale?: number): void;
+
+        // Visual Customization
+        setScale(scaleOrOptions: number | ScaleOptions): EmotiveMascot;
+        getScale(): number;
+        setOpacity(opacity: number): EmotiveMascot;
+        getOpacity(): number;
+        fadeIn(duration?: number): EmotiveMascot;
+        fadeOut(duration?: number): EmotiveMascot;
+        setColor(color: string): EmotiveMascot;
+        setGlowColor(color: string): EmotiveMascot;
+        setTheme(theme: Theme): EmotiveMascot;
+        setBackdrop(options: BackdropOptions): EmotiveMascot;
+        getBackdrop(): BackdropOptions | null;
+
+        // Particles
+        clearParticles(): void;
+        setMaxParticles(maxParticles: number): EmotiveMascot;
+        getParticleCount(): number;
+        setParticleSystemCanvasDimensions(width: number, height: number): EmotiveMascot;
+
+        // Performance
+        setQuality(level: 'low' | 'medium' | 'high'): void;
+        setSpeed(speed: number): EmotiveMascot;
+        getSpeed(): number;
+        setFPS(fps: number): EmotiveMascot;
+        getFPS(): number;
+        isPaused(): boolean;
+        getPerformanceMetrics(): PerformanceMetrics;
+        batch(callback: (mascot: EmotiveMascot) => void): EmotiveMascot;
+
+        // Timeline Recording
+        startRecording(): void;
+        stopRecording(): TimelineEvent[];
+        playTimeline(timeline: TimelineEvent[]): void;
+        stopPlayback(): void;
+        getTimeline(): TimelineEvent[];
+        loadTimeline(timeline: TimelineEvent[]): void;
+        exportTimeline(): string;
+        importTimeline(json: string): void;
+        getCurrentTime(): number;
+        seek(time: number): void;
+
+        // Export
+        getFrameData(format?: string): string;
+        getFrameBlob(format?: string): Promise<Blob>;
+        getAnimationData(): any;
+
+        // Query
+        getAvailableGestures(): string[];
+        getAvailableEmotions(): string[];
+        getAvailableShapes(): string[];
+        getVersion(): string;
+        getCapabilities(): Capabilities;
+
+        // Events
+        on(event: string, handler: Function): EmotiveMascot;
+        off(event: string, handler?: Function): EmotiveMascot;
+        once(event: string, callback: Function): EmotiveMascot;
+        emit(event: string, data?: any): void;
+        removeAllListeners(event?: string | null): EmotiveMascot;
+        listenerCount(event: string): number;
+        getEventNames(): string[];
+
+        // Audio / Speech
+        setVolume(volume: number): EmotiveMascot;
+        getVolume(): number;
+        startSpeaking(audioContext: AudioContext): EmotiveMascot;
+        stopSpeaking(): EmotiveMascot;
+        isSpeaking(): boolean;
+        connectAudioSource(audioSource: any): EmotiveMascot;
+
+        // Breathing
+        breathe(type?: string): EmotiveMascot;
+        stopBreathing(): EmotiveMascot;
+
+        // State
+        sleep(): EmotiveMascot;
+        wake(): EmotiveMascot;
+        isActive(): boolean;
+        getPosition(): { x: number; y: number } | null;
+        setOffset(x: number, y: number, z?: number): EmotiveMascot;
+        getOffset(): { x: number; y: number; z: number };
+
+        // Performance
+        setTargetFPS(targetFPS: number): EmotiveMascot;
+        getTargetFPS(): number;
+
+        // Plugin
+        registerPlugin(plugin: any): Promise<boolean>;
+
+        // Accessibility
+        setAccessibility(options: { colorBlindMode?: string; reducedMotion?: boolean; highContrast?: boolean }): void;
+
+        // Resize Handling
+        handleResize(width: number, height: number, dpr?: number): void;
+
+        // Component access (safe proxies)
+        readonly renderer: any;
+        readonly shapeMorpher: any;
+        readonly gazeTracker: any;
+        readonly canvas: HTMLCanvasElement;
+    }
+
+    // Particle System
+    export interface ParticleConfig {
+        count?: number;
+        size?: number | [number, number];
+        speed?: number | [number, number];
+        life?: number | [number, number];
+        color?: string | string[];
+        shape?: 'circle' | 'square' | 'star' | 'triangle';
+        emissionRate?: number;
+        gravity?: number;
+        wind?: [number, number];
+    }
+
+    export class ParticleSystem {
+        constructor(config?: ParticleConfig);
+        emit(x: number, y: number, count?: number): void;
+        update(deltaTime: number): void;
+        render(ctx: CanvasRenderingContext2D): void;
+        clear(): void;
+        setConfig(config: ParticleConfig): void;
+        getParticleCount(): number;
+    }
+
+    // Animation Controller
+    export interface AnimationState {
+        name: string;
+        duration: number;
+        loop?: boolean;
+        easing?: string;
+    }
+
+    export class AnimationController {
+        constructor();
+        addState(state: AnimationState): void;
+        removeState(name: string): void;
+        play(name: string, options?: any): void;
+        stop(): void;
+        pause(): void;
+        resume(): void;
+        getCurrentState(): AnimationState | null;
+        setSpeed(speed: number): void;
+    }
+
+    // Renderer
+    export interface RendererConfig {
+        canvas: HTMLCanvasElement;
+        antialias?: boolean;
+        alpha?: boolean;
+        preserveDrawingBuffer?: boolean;
+    }
+
+    export class EmotiveRenderer {
+        constructor(config: RendererConfig);
+        render(scene: any): void;
+        clear(): void;
+        resize(width: number, height: number): void;
+        setQuality(quality: 'low' | 'medium' | 'high' | 'auto'): void;
+        getStats(): any;
+    }
+
+    // Behaviors
+    export interface Behavior {
+        name: string;
+        priority?: number;
+        enabled?: boolean;
+        update(deltaTime: number, state: any): void;
+        render?(ctx: CanvasRenderingContext2D, state: any): void;
+        start?(): void;
+        stop?(): void;
+    }
+
+    export class IdleBehavior implements Behavior {
+        name: string;
+        update(deltaTime: number, state: any): void;
+    }
+
+    export class BreathingBehavior implements Behavior {
+        name: string;
+        update(deltaTime: number, state: any): void;
+    }
+
+    export class BlinkBehavior implements Behavior {
+        name: string;
+        update(deltaTime: number, state: any): void;
+    }
+
+    // Utils
+    export namespace Utils {
+        function lerp(a: number, b: number, t: number): number;
+        function clamp(value: number, min: number, max: number): number;
+        function random(min?: number, max?: number): number;
+        function distance(x1: number, y1: number, x2: number, y2: number): number;
+        function angle(x1: number, y1: number, x2: number, y2: number): number;
+        function hsv2rgb(h: number, s: number, v: number): [number, number, number];
+        function rgb2hsv(r: number, g: number, b: number): [number, number, number];
+        function debounce<T extends Function>(fn: T, delay: number): T;
+        function throttle<T extends Function>(fn: T, delay: number): T;
+    }
+
+    // Constants
+    export namespace Constants {
+        const VERSION: string;
+        const DEFAULT_FPS: number;
+        const MAX_PARTICLES: number;
+        const DEFAULT_THEME: Theme;
+    }
+
+    // Events
+    export interface EmotiveEvent {
+        type: string;
+        data?: any;
+        timestamp: number;
+    }
+
+    export type EmotiveEventHandler = (event: EmotiveEvent) => void;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // EMOTION & GESTURE MODULE DEFINITIONS
+    // For developers creating custom emotions/gestures
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Visual parameters for emotion rendering
+     */
+    export interface VisualParams {
+        /** Primary glow color (hex string) */
+        glowColor: string;
+        /** Particles spawned per second */
+        particleRate: number;
+        /** Minimum particle count */
+        minParticles?: number;
+        /** Maximum particle count */
+        maxParticles?: number;
+        /** Particle behavior type */
+        particleBehavior?: 'float' | 'popcorn' | 'rain' | 'orbit' | 'spiral' | 'drift' | 'pulse';
+        /** Breathing animation rate (1.0 = normal) */
+        breathRate?: number;
+        /** Breathing amplitude (0-1) */
+        breathDepth?: number;
+        /** Enable core position jitter */
+        coreJitter?: boolean;
+        /** Blink frequency multiplier */
+        blinkRate?: number;
+        /** Blink animation speed */
+        blinkSpeed?: number;
+        /** Weighted particle color distribution */
+        particleColors?: Array<{ color: string; weight: number }>;
+    }
+
+    /**
+     * Gesture modifiers applied to base gestures
+     */
+    export interface GestureModifiers {
+        /** Speed multiplier for gestures */
+        speed?: number;
+        /** Movement amplitude multiplier */
+        amplitude?: number;
+        /** Overall intensity multiplier */
+        intensity?: number;
+        /** Motion smoothness (higher = more fluid) */
+        smoothness?: number;
+        /** Motion regularity (lower = more variation) */
+        regularity?: number;
+        /** Add bounce to movements */
+        addBounce?: boolean;
+    }
+
+    /**
+     * Transition configuration for emotion changes
+     */
+    export interface TransitionConfig {
+        /** Transition duration in milliseconds */
+        duration?: number;
+        /** Easing function name */
+        easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'easeOutBack' | 'easeOutBounce';
+        /** Emotion priority (higher = harder to interrupt) */
+        priority?: number;
+        /** Emit particle burst on entry */
+        burstOnEntry?: boolean;
+    }
+
+    /**
+     * 3D-specific emotion configuration
+     */
+    export interface Emotion3DConfig {
+        rotation?: {
+            /** Rotation animation type */
+            type?: 'rhythmic' | 'constant' | 'idle';
+            /** Rotation speed multiplier */
+            speed?: number;
+            /** Rotation rates per axis [X, Y, Z] in rad/sec */
+            axes?: [number, number, number];
+            /** Sync rotation to music BPM */
+            musicSync?: boolean;
+        };
+        glow?: {
+            /** Glow color (hex string) */
+            color?: string;
+            /** Glow intensity multiplier */
+            intensity?: number;
+            pulse?: {
+                /** Pulse speed multiplier */
+                speed?: number;
+                /** Intensity range [min, max] */
+                range?: [number, number];
+            };
+        };
+        scale?: {
+            /** Base scale factor */
+            base?: number;
+            breathe?: {
+                enabled?: boolean;
+                /** Breathing depth (scale variation) */
+                depth?: number;
+                /** Breathing rate multiplier */
+                rate?: number;
+            };
+        };
+    }
+
+    /**
+     * Soul/energy animation parameters (geometry-agnostic)
+     */
+    export interface SoulAnimationConfig {
+        /** Energy movement speed */
+        driftSpeed?: number;
+        /** Vertical pulse/shimmer speed */
+        shimmerSpeed?: number;
+        /** Chaos/randomness factor (0-1) */
+        turbulence?: number;
+    }
+
+    /**
+     * Core parameters returned by getCoreParams()
+     */
+    export interface CoreParams {
+        scaleX?: number;
+        scaleY?: number;
+        eyeOpenness?: number;
+        eyeExpression?: 'normal' | 'happy' | 'sad' | 'angry' | 'surprised' | 'focused';
+        pupilOffset?: { x: number; y: number };
+        sparkle?: boolean;
+    }
+
+    /**
+     * Emotion module configuration
+     * Used to define custom emotions in src/core/emotions/
+     */
+    export interface EmotionConfig {
+        /** Emotion identifier */
+        name: string;
+        /** Display emoji */
+        emoji?: string;
+        /** Human-readable description */
+        description?: string;
+        /** Visual rendering parameters */
+        visual: VisualParams;
+        /** Gesture modifiers for this emotion */
+        modifiers?: GestureModifiers;
+        /** Typical gestures associated with this emotion */
+        typicalGestures?: string[];
+        /** Transition configuration */
+        transitions?: TransitionConfig;
+        /** 3D-specific configuration */
+        '3d'?: Emotion3DConfig;
+        /** Soul animation parameters */
+        soulAnimation?: SoulAnimationConfig;
+        /** Get core rendering parameters */
+        getCoreParams?(state: any): CoreParams;
+    }
+
+    /**
+     * Gesture rhythm configuration for beat-synced animations
+     */
+    export interface GestureRhythmConfig {
+        /** Enable rhythm sync */
+        enabled?: boolean;
+        /** Sync mode: 'beat', 'bar', 'phrase' */
+        syncMode?: 'beat' | 'bar' | 'phrase';
+        /** When to start: 'nextBeat', 'immediately', 'nextBar' */
+        timingSync?: 'nextBeat' | 'immediately' | 'nextBar';
+        /** Can be interrupted mid-animation */
+        interruptible?: boolean;
+        /** Gesture priority (lower = higher priority) */
+        priority?: number;
+        /** Can blend with other gestures */
+        blendable?: boolean;
+        /** When gesture can transition out */
+        crossfadePoint?: 'anyBeat' | 'downbeat' | 'end';
+        /** Pattern-specific overrides */
+        patternOverrides?: Record<string, any>;
+    }
+
+    /**
+     * 3D gesture evaluation result
+     */
+    export interface Gesture3DResult {
+        /** Position offset [x, y, z] */
+        position?: [number, number, number];
+        /** Rotation [x, y, z] in radians */
+        rotation?: [number, number, number];
+        /** Scale factor (uniform) or [x, y, z] */
+        scale?: number | [number, number, number];
+    }
+
+    /**
+     * Gesture module configuration
+     * Used to define custom gestures in src/core/gestures/
+     */
+    export interface GestureConfig {
+        /** Gesture identifier */
+        name: string;
+        /** Display emoji */
+        emoji?: string;
+        /** Gesture type: 'blending' adds to motion, 'replacing' overrides */
+        type?: 'blending' | 'replacing';
+        /** Human-readable description */
+        description?: string;
+        /** Default configuration */
+        config: {
+            /** Animation duration in ms */
+            duration?: number;
+            /** Musical duration specification */
+            musicalDuration?: { musical: boolean; beats: number };
+            /** Movement amplitude */
+            amplitude?: number;
+            /** Oscillation frequency */
+            frequency?: number;
+            /** Movement axis */
+            axis?: 'vertical' | 'horizontal' | 'both';
+            /** Reduce amplitude over time */
+            damping?: boolean;
+            /** Animation easing type */
+            easing?: string;
+            /** Overall motion intensity */
+            strength?: number;
+            /** Particle motion configuration */
+            particleMotion?: {
+                type: string;
+                axis?: string;
+                strength?: number;
+                frequency?: number;
+            };
+        };
+        /** Rhythm sync configuration */
+        rhythm?: GestureRhythmConfig;
+        /** 3D gesture evaluation */
+        '3d'?: {
+            /** Evaluate 3D properties at progress */
+            evaluate(progress: number, motion?: any): Gesture3DResult;
+        };
+        /** Initialize gesture data for particle */
+        initialize?(particle: any, motion: any): void;
+        /** Apply gesture motion to particle */
+        apply?(particle: any, progress: number, motion: any, dt: number, centerX: number, centerY: number): void;
+        /** Clean up gesture data */
+        cleanup?(particle: any): void;
+    }
+
+    // Module exports
+    export function createMascot(config?: EmotiveMascotConfig): EmotiveMascot;
+    export function createParticleSystem(config?: ParticleConfig): ParticleSystem;
+    export function createAnimationController(): AnimationController;
+    export function createRenderer(config: RendererConfig): EmotiveRenderer;
+}

@@ -1,0 +1,148 @@
+# Build outputs
+/dist
+/build
+/out
+
+# Generated bundles (should be built, not tracked)
+/site/js/*.js
+/site/js/*.map
+/site/public/emotive-engine.js
+*.map
+
+# Dependency directories
+/node_modules
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Personal/strategy documents
+DELETEME-STRATEGIES.md
+LAUNCH_ANNOUNCEMENTS.md
+ROAST.md
+IDEAS.md
+PLAN_*.md
+ELEMENTAL.md
+FIRE-SYSTEM.md
+FIX_SPAWN.md
+
+# Firebase service account credentials
+service-account.json
+*-firebase-adminsdk-*.json
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.vercel
+
+# Logs
+logs
+*.log
+console.txt
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Temporary folders
+tmp/
+temp/
+
+# Temporary upgrade plans (delete when done)
+UPGRADE_WATER.md
+UPGRADE-VOID.md
+DO-THIS.md
+LIGHT-UP.md
+
+# Testing/development HTML files (examples/ directory is tracked)
+# hero-*-capture.html  (moved to examples/)
+# hero-capture.html
+
+# Temporary GIF generation scripts (delete before publishing)
+scripts/create-banner.js
+scripts/generate-banner-gif.js
+
+# Playwright test artifacts
+site/test-results/
+site/playwright-report/
+site/playwright/.cache/
+
+.vercel
+*.tsbuildinfo
+
+# Claude Code (local settings, memory, project context)
+.claude/
+
+# Git worktrees
+.worktrees/
+
+# HN launch planning
+UP-HNEWS.md
+UP-COMB.md
+best.code-workspace
+
+# Backup files
+*.backup
+*.bak
+*.old
+
+# Work-in-progress features (not ready for release)
+site/public/examples/3d/black-hole-demo.html
+src/3d/geometries/BlackHole.js
+
+# GitHub Pages build output
+_pages/
+
+# Bundle analysis output (npm run build:analyze / optimize; CI uploads these as artifacts)
+stats.html
+bundle-analysis.json
+optimization-config.json
+
+# Large binary assets (HDR environment maps)
+# Exception: Allow studio_1k.hdr for crystal reflections on GitHub Pages
+*.hdr
+!public/hdri/studio_1k.hdr
+!site/public/hdri/studio_1k.hdr
+nul
+DARK-FIX.md
+TRAIL-FIX.md
+PLANNED-POSTS.md
+UP-*.md
+DISTORTION.md
+GAME.md
+MASTER_PLAN_MAPPING.md
+TODO.md
+test-output.txt
+calibration-output.log
+docs/GDD.md
+docs/UP-MATS.md
+src/**/*.md
+assets/**/*.md
+
+# Dev/test audio tracks (calibration clicks, BPM test files)
+site/public/assets/tracks/calibration/
+site/public/assets/tracks/test/

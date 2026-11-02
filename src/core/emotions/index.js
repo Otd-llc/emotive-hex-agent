@@ -1,0 +1,347 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════
+ *  ╔═○─┐ emotive
+ *    ●●  ENGINE v4.0 - Emotion Registry
+ *  └─○═╝
+ * ═══════════════════════════════════════════════════════════════════════════════════════
+ *
+ * @fileoverview Central emotion registry with full plugin support
+ * @author Emotive Engine Team
+ * @version 4.0.0
+ * @module emotions
+ * @complexity ⭐⭐ Intermediate
+ * @audience Modify this to register new emotions or change emotion loading logic
+ *
+ * ╔═══════════════════════════════════════════════════════════════════════════════════
+ * ║                                   PURPOSE
+ * ╠═══════════════════════════════════════════════════════════════════════════════════
+ * ║ Central registry for modular emotion system with plugin adapter integration.
+ * ║ • Core emotions are loaded synchronously at startup
+ * ║ • Plugin emotions can be registered dynamically via adapter
+ * ║ • Each emotion is self-contained with visual, gesture, and transition data
+ * ║ • Value-agnostic design allows easy tuning without code changes
+ * ╚═══════════════════════════════════════════════════════════════════════════════════
+ */
+
+import pluginAdapter from './plugin-adapter.js';
+
+// Import all emotion modules
+import neutral from './states/neutral.js';
+import joy from './states/joy.js';
+import sadness from './states/sadness.js';
+import anger from './states/anger.js';
+import fear from './states/fear.js';
+import surprise from './states/surprise.js';
+import disgust from './states/disgust.js';
+import love from './states/love.js';
+import suspicion from './states/suspicion.js';
+import excited from './states/excited.js';
+import resting from './states/resting.js';
+import euphoria from './states/euphoria.js';
+import focused from './states/focused.js';
+import glitch from './states/glitch.js';
+import calm from './states/calm.js';
+
+// Registry to store all registered emotions
+const emotionRegistry = new Map();
+
+// Emotion aliases for compatibility
+const emotionAliases = {
+    happy: 'joy',
+    peaceful: 'calm',
+    curious: 'surprise',
+    frustrated: 'anger',
+    sad: 'sadness',
+    excitement: 'excited',
+};
+
+// Register all emotions SYNCHRONOUSLY
+[
+    neutral,
+    joy,
+    sadness,
+    anger,
+    fear,
+    surprise,
+    disgust,
+    love,
+    suspicion,
+    excited,
+    resting,
+    euphoria,
+    focused,
+    glitch,
+    calm,
+].forEach(emotion => {
+    if (emotion && emotion.name) {
+        emotionRegistry.set(emotion.name, emotion);
+    }
+});
+
+/**
+ * Register an emotion module
+ * @param {Object} emotionModule - The emotion module to register
+ */
+export function registerEmotion(emotionModule) {
+    if (!emotionModule.name) {
+        return;
+    }
+    emotionRegistry.set(emotionModule.name, emotionModule);
+}
+
+/**
+ * Get emotion configuration by name (checks both core and plugin emotions)
+ * @param {string} emotionName - Name of the emotion (or alias)
+ * @returns {Object|null} The emotion configuration or null if not found
+ */
+export function getEmotion(emotionName) {
+    // Check aliases first
+    const resolvedName = emotionAliases[emotionName] || emotionName;
+
+    // Check core emotions
+    const coreEmotion = emotionRegistry.get(resolvedName);
+    if (coreEmotion) {
+        return coreEmotion;
+    }
+
+    // Check plugin emotions
+    const pluginEmotion = pluginAdapter.getPluginEmotion(resolvedName);
+    if (pluginEmotion) {
+        return pluginEmotion;
+    }
+
+    return null;
+}
+
+/**
+ * Get emotion parameters (visual properties) with dynamic evaluation
+ * @param {string} emotionName - Name of the emotion
+ * @returns {Object} Visual parameters for the emotion
+ */
+export function getEmotionVisualParams(emotionName) {
+    const emotion = getEmotion(emotionName);
+    if (!emotion) {
+        return getEmotion('neutral').visual;
+    }
+
+    // Make sure visual exists
+    if (!emotion.visual) {
+        return {};
+    }
+
+    // Create a copy of visual properties, excluding functions
+    const { visual } = emotion;
+    const params = {};
+
+    // Copy non-function properties
+    for (const key in visual) {
+        if (typeof visual[key] !== 'function') {
+            params[key] = visual[key];
+        }
+    }
+
+    // Evaluate dynamic functions if they exist and override static values
+    if (typeof visual.getGlowIntensity === 'function') {
+        params.glowIntensity = visual.getGlowIntensity();
+    }
+
+    if (typeof visual.getParticleSpeed === 'function') {
+        params.particleSpeed = visual.getParticleSpeed();
+    }
+
+    if (typeof visual.getParticleRate === 'function') {
+        params.particleRate = visual.getParticleRate();
+    }
+
+    if (typeof visual.getGlowColor === 'function') {
+        params.glowColor = visual.getGlowColor();
+    }
+
+    return params;
+}
+
+/**
+ * Get emotion modifiers (gesture adjustments)
+ * @param {string} emotionName - Name of the emotion
+ * @returns {Object} Gesture modifiers for the emotion
+ */
+export function getEmotionModifiers(emotionName) {
+    const emotion = getEmotion(emotionName);
+    if (!emotion) {
+        return getEmotion('neutral').modifiers;
+    }
+    return emotion.modifiers;
+}
+
+/**
+ * Get list of available emotions (core and plugin)
+ * @returns {Array<string>} List of emotion names
+ */
+export function listEmotions() {
+    const coreEmotions = Array.from(emotionRegistry.keys());
+    const pluginEmotions = pluginAdapter.getAllPluginEmotions();
+    return [...coreEmotions, ...pluginEmotions];
+}
+
+/**
+ * Get all emotion configurations
+ * @returns {Object} Object mapping emotion names to configurations
+ */
+export function getAllEmotions() {
+    const emotions = {};
+    emotionRegistry.forEach((value, key) => {
+        emotions[key] = value;
+    });
+    return emotions;
+}
+
+/**
+ * Check if an emotion exists (checks both core and plugin)
+ * @param {string} emotionName - Name of the emotion to check
+ * @returns {boolean} True if emotion exists
+ */
+export function hasEmotion(emotionName) {
+    const resolvedName = emotionAliases[emotionName] || emotionName;
+    return (
+        emotionRegistry.has(resolvedName) || pluginAdapter.getPluginEmotion(resolvedName) !== null
+    );
+}
+
+/**
+ * Add an emotion alias
+ * @param {string} alias - The alias name
+ * @param {string} emotionName - The actual emotion name
+ */
+export function addEmotionAlias(alias, emotionName) {
+    emotionAliases[alias] = emotionName;
+}
+
+/**
+ * Get emotion transition parameters
+ * @param {string} fromEmotion - Starting emotion
+ * @param {string} toEmotion - Target emotion
+ * @returns {Object} Transition parameters
+ */
+export function getTransitionParams(fromEmotion, toEmotion) {
+    const from = getEmotion(fromEmotion);
+    const to = getEmotion(toEmotion);
+
+    if (!from || !to) {
+        return {
+            duration: 1000,
+            easing: 'ease-in-out',
+        };
+    }
+
+    // Check if 'to' emotion has specific transition hints
+    if (to.transitions && to.transitions[fromEmotion]) {
+        return to.transitions[fromEmotion];
+    }
+
+    // Use default transition
+    return {
+        duration: 1000,
+        easing: 'ease-in-out',
+        gesture: to.transitions?.defaultGesture || null,
+    };
+}
+
+/**
+ * Get typical gestures for an emotion
+ * @param {string} emotionName - Name of the emotion
+ * @returns {Array<string>} List of typical gesture names
+ */
+export function getEmotionGestures(emotionName) {
+    const emotion = getEmotion(emotionName);
+    return emotion?.gestures || [];
+}
+
+/**
+ * Get rhythm modifiers for a single emotion.
+ * @param {string} emotionName
+ * @returns {Object} { windowMultiplier, visualNoise, inputDelay, tempoShift }
+ */
+export function getEmotionRhythmModifiers(emotionName) {
+    const emotion = getEmotion(emotionName);
+    return (
+        emotion?.rhythmModifiers ?? {
+            windowMultiplier: 1.0,
+            visualNoise: 0,
+            inputDelay: 0,
+            tempoShift: 0,
+        }
+    );
+}
+
+/**
+ * Compute blended rhythm modifiers across multi-emotion slots.
+ * Dominant contributes 75%, undercurrents share 25%.
+ * @param {Array<{emotion: string, intensity: number}>} slots
+ * @returns {Object} Blended { windowMultiplier, visualNoise, inputDelay, tempoShift }
+ */
+export function getBlendedRhythmModifiers(slots) {
+    const defaults = { windowMultiplier: 1.0, visualNoise: 0, inputDelay: 0, tempoShift: 0 };
+    if (!slots || slots.length === 0) return defaults;
+
+    if (slots.length === 1) {
+        const mods = getEmotionRhythmModifiers(slots[0].emotion);
+        const i = slots[0].intensity;
+        return {
+            windowMultiplier: 1.0 + (mods.windowMultiplier - 1.0) * i,
+            visualNoise: mods.visualNoise * i,
+            inputDelay: mods.inputDelay * i,
+            tempoShift: mods.tempoShift * i,
+        };
+    }
+
+    // Find dominant
+    let domIdx = 0;
+    for (let i = 1; i < slots.length; i++) {
+        if (slots[i].intensity > slots[domIdx].intensity) domIdx = i;
+    }
+
+    const result = { windowMultiplier: 0, visualNoise: 0, inputDelay: 0, tempoShift: 0 };
+    const undercurrents = slots.filter((_, i) => i !== domIdx);
+    const ucWeight = undercurrents.length > 0 ? 0.25 / undercurrents.length : 0;
+
+    // Dominant: 75%
+    const domMods = getEmotionRhythmModifiers(slots[domIdx].emotion);
+    const di = slots[domIdx].intensity;
+    result.windowMultiplier += (1.0 + (domMods.windowMultiplier - 1.0) * di) * 0.75;
+    result.visualNoise += domMods.visualNoise * di * 0.75;
+    result.inputDelay += domMods.inputDelay * di * 0.75;
+    result.tempoShift += domMods.tempoShift * di * 0.75;
+
+    // Undercurrents
+    for (const uc of undercurrents) {
+        const ucMods = getEmotionRhythmModifiers(uc.emotion);
+        const ui = uc.intensity;
+        result.windowMultiplier += (1.0 + (ucMods.windowMultiplier - 1.0) * ui) * ucWeight;
+        result.visualNoise += ucMods.visualNoise * ui * ucWeight;
+        result.inputDelay += ucMods.inputDelay * ui * ucWeight;
+        result.tempoShift += ucMods.tempoShift * ui * ucWeight;
+    }
+
+    return result;
+}
+
+// Export plugin adapter for external use
+export { pluginAdapter };
+
+// Export everything
+export default {
+    registerEmotion,
+    getEmotion,
+    getEmotionVisualParams,
+    getEmotionParams: getEmotionVisualParams, // Alias for compatibility
+    getEmotionModifiers,
+    getEmotionRhythmModifiers,
+    getBlendedRhythmModifiers,
+    listEmotions,
+    getAllEmotions,
+    hasEmotion,
+    addEmotionAlias,
+    getTransitionParams,
+    getEmotionGestures,
+    pluginAdapter,
+};

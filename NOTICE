@@ -1,0 +1,16 @@
+emotive-hex-agent
+=================
+
+This software is derived from the Emotive Engine (https://github.com/joshtol/emotive-engine),
+Copyright (c) 2025-2026 Joshua Tollette, released under the MIT License. Source taken at engine
+commit 56e0bcaf (branch fix/site-audit-2026-10-22) on 2026-11-02, imported without history.
+
+New work in this repository, Copyright (c) 2026 One Thousand Drones LLC, is released under the
+same MIT License (see LICENSE.md).
+
+Attribution: "Emotive Engine" is credited in this NOTICE and in the README. Emotive Engine is a
+trademark of Joshua Tollette; its use here is attribution of origin, not endorsement.
+
+Third-party code carried from the engine (e.g. the three.js-derived UnrealBloomPassAlpha) keeps
+its own license header; see docs/THIRD-PARTY-LICENSES.md (to be rewritten for what this build
+actually ships).
