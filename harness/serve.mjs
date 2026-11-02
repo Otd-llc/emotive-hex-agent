@@ -47,6 +47,8 @@ export const PLANTS = {
     'shader-error': [['gl_FragColor = vec4(finalColor, finalAlpha);', '#error planted fault\ngl_FragColor = vec4(finalColor, finalAlpha);']],
     // States gate: the shock gesture renamed in the build.
     'rename-shock': [['name:"shock"', 'name:"shockX"']],
+    // States gate: the shapes lose their crystalFamily flag (name checks would not notice).
+    unflag: [['crystalFamily:!0', 'crystalFamily:!1']],
     // States gate: a gem that still renders and moves, but dark.
     'dark-gem': [['gl_FragColor = vec4(finalColor, finalAlpha);', 'gl_FragColor = vec4(finalColor * 0.02, finalAlpha);']],
     // Teardown gate: the context is never released.
