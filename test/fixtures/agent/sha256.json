@@ -1,0 +1,54 @@
+{
+    "crystal-double-terminated.glb": {
+        "sha256": "cd250e135ca6aab1025d95adaa3a93bcc3d69e1eb51e14a3d626751815cfd4dc",
+        "bytes": 7744
+    },
+    "crystal-dt-trio.glb": {
+        "sha256": "0b022f7f18c1f68fc0ae408534089416c627de44db8281e28c2ecd24e63ba535",
+        "bytes": 18648
+    },
+    "crystal-dt-cluster.glb": {
+        "sha256": "4a39dd4c9271de66b9f9bc6b10e0ebf83f6d949dbc5325d132d6f0719379293a",
+        "bytes": 27580
+    },
+    "crystal-dt-rosette.glb": {
+        "sha256": "732e2ff50488a5c6e98feb32ac3342c60431e51c1a2e2917b9c51497e0b699b6",
+        "bytes": 26860
+    },
+    "crystal-dt-split.glb": {
+        "sha256": "4c3f3e895228a56870d90c81ee1a200a12f09379ef28cf07ed92184321d9480c",
+        "bytes": 9144
+    },
+    "crystal-dt-twisted.glb": {
+        "sha256": "be591000af8dfaa9120e490e712dafb127e4d2e9ce9dcbcd13c98bc608cfe644",
+        "bytes": 12708
+    },
+    "inclusion-hex.glb": {
+        "sha256": "618e4545bc543c821f82fbf642845a6acea40f11570a0245f5c2eab5d4057c3c",
+        "bytes": 5588
+    },
+    "arc-small.glb": {
+        "sha256": "f5e6899861ef7958b21c8690657935f119b2a82cef86eae4de780bc145f6a91c",
+        "bytes": 3268
+    },
+    "arc-medium.glb": {
+        "sha256": "86246c4d9e05a829f6b6045d26afe82b4135751c12dd5692d0c8f0ca277299be",
+        "bytes": 6636
+    },
+    "spark-node.glb": {
+        "sha256": "ee0a6047f1204f5d9980a63351a5e2834a6c7a4223f1351cbd3868f3e0033277",
+        "bytes": 5544
+    },
+    "lightning-ring.glb": {
+        "sha256": "84902d1a6168afaaf009095f5bf05cf66af3031477c0bafd86a188c846796342",
+        "bytes": 9412
+    },
+    "plasma-ring.glb": {
+        "sha256": "351f3a531a5ecdea026f8d7575930b66279df3dbffac88fb5326ed2ae84317cb",
+        "bytes": 9412
+    },
+    "hexgem-detail.webp": {
+        "sha256": "ee8ca84f8a83aac324aa0b5f6ba44b423a7a2a48c5c9fa8804fbbdbda982c4f4",
+        "bytes": 8524
+    }
+}
