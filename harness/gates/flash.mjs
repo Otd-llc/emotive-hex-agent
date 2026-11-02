@@ -6,13 +6,19 @@
  * must pass; the ruby shift alone must pass too. The EMOTION leg swaps the core between the
  * most different emotion colours every 250 ms (faster than any agent state changes) and must
  * pass as well: the core's colour shift is eased over >= CORE_SHIFT_MIN_MS.
+ * The DONE legs fire electricflourish (the other electric moment) on both fields.
+ * --electric-set=<current|filament|corona|halo> runs every leg with that set's meshes and tune
+ * (default current); run it once per set.
  * Planted fault: --plant-stock-flicker switches the flash-safety caps off (stock flicker
  * rates, up to 30 Hz) and must FAIL.
- * Usage: node harness/gates/flash.mjs [--plant-stock-flicker]
+ * Usage: node harness/gates/flash.mjs [--electric-set=<name>] [--plant-stock-flicker]
  */
 import { runGate, parsePlant } from './lib.mjs';
 
 const pagePlant = parsePlant();
+const SETS = ['current', 'filament', 'corona', 'halo'];
+const electricSet = (process.argv.find(a => a.startsWith('--electric-set=')) ?? '--electric-set=current').slice(15);
+if (!SETS.includes(electricSet)) throw new Error(`unknown electric set ${electricSet}`);
 if (pagePlant && pagePlant !== 'stock-flicker') throw new Error(`unknown plant ${pagePlant}`);
 // Worst case for the area rule: the gem drawn LARGE (480 px stage, camera pulled in so the gem
 // itself fills most of the window, far bigger than the product placement), measured over the central
@@ -30,6 +36,8 @@ const LEGS = [
     { name: 'ruby shift alone dt=1/60 dark', dt: 1000 / 60, field: 'dark', composite: false },
     { name: 'emotion swaps every 250 ms dt=1/60 dark', dt: 1000 / 60, field: 'dark', composite: false, emotions: true },
     { name: 'emotion swaps every 250 ms dt=1/60 light', dt: 1000 / 60, field: 'light', composite: false, emotions: true },
+    { name: 'done (electricflourish) dt=1/60 dark', dt: 1000 / 60, field: 'dark', composite: false, flourish: true },
+    { name: 'done (electricflourish) dt=1/60 light', dt: 1000 / 60, field: 'light', composite: false, flourish: true },
 ];
 const SWAP = ['joy', 'suspicion', 'love', 'focused', 'anger', 'calm', 'surprise', 'fear', 'euphoria', 'sadness', 'excited', 'resting'];
 
@@ -39,9 +47,9 @@ await runGate('flash', { pagePlant }, async ({ open }) => {
     for (const leg of LEGS) {
         const surface = leg.field;
         const r = await page.evaluate(
-            async ({ leg, STAGE, WIN, CAMERA_DISTANCE, SECONDS, SWAP, field, surface, plant }) => {
+            async ({ leg, STAGE, WIN, CAMERA_DISTANCE, SECONDS, SWAP, field, surface, plant, electricSet }) => {
                 const { FlashMeter } = await import('/harness/flash-metric.mjs');
-                await H.mount({ size: STAGE, surface, debugStep: true, field, cameraDistance: CAMERA_DISTANCE });
+                await H.mount({ size: STAGE, surface, debugStep: true, field, cameraDistance: CAMERA_DISTANCE, electricSet });
                 await H.electricReady();
                 const m = H.mascot;
                 m.__seed(1234);
@@ -50,7 +58,9 @@ await runGate('flash', { pagePlant }, async ({ open }) => {
                 const crop = { x: (STAGE - WIN.w) >> 1, y: (STAGE - WIN.h) >> 1, w: WIN.w, h: WIN.h };
                 const actions = leg.emotions
                     ? SWAP.map((e, i) => [i * 250, () => m.setEmotion(e)])
-                    : [[0, () => m.setGemColor('ruby', 500)], [1500, () => m.setGemColor(null, 600)]];
+                    : leg.flourish
+                      ? [[0, () => m.setEmotion('euphoria')], [0, () => m.express('electricflourish')]]
+                      : [[0, () => m.setGemColor('ruby', 500)], [1500, () => m.setGemColor(null, 600)]];
                 if (leg.composite) actions.push([0, () => m.express('shock')]);
                 let maxArcs = 0;
                 await H.stepFrames({
@@ -68,10 +78,10 @@ await runGate('flash', { pagePlant }, async ({ open }) => {
                 await H.close();
                 return { ...res, maxArcs };
             },
-            { leg, STAGE, WIN, CAMERA_DISTANCE, SECONDS, SWAP, field: FIELDS[leg.field], surface, plant: pagePlant === 'stock-flicker' }
+            { leg, STAGE, WIN, CAMERA_DISTANCE, SECONDS, SWAP, field: FIELDS[leg.field], surface, plant: pagePlant === 'stock-flicker', electricSet }
         );
-        legs.push({ leg: leg.name, ...r, ok: r.pass && (!leg.composite || r.maxArcs > 0) });
+        legs.push({ leg: leg.name, ...r, ok: r.pass && (!(leg.composite || leg.flourish) || r.maxArcs > 0) });
     }
     await page.close();
-    return { ok: legs.every(l => l.ok) && pageErrors.length === 0, report: { stagePx: STAGE, cameraDistance: CAMERA_DISTANCE, window: WIN, seconds: SECONDS, pageErrors: pageErrors.slice(0, 3), legs } };
+    return { ok: legs.every(l => l.ok) && pageErrors.length === 0, report: { electricSet, stagePx: STAGE, cameraDistance: CAMERA_DISTANCE, window: WIN, seconds: SECONDS, pageErrors: pageErrors.slice(0, 3), legs } };
 });
