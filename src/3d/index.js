@@ -91,6 +91,37 @@ export class EmotiveMascot3D {
         this._reducedMotionMediaQuery = null;
 
         this._boundAnimate = time => this.animate(time);
+
+        // Frame limiter (fix b): render at idleFPS, or activeFPS while a gesture or morph runs.
+        // Animation time still advances by the whole elapsed time.
+        this.idleFPS = config.idleFPS > 0 ? config.idleFPS : 30;
+        this.activeFPS = config.activeFPS > 0 ? config.activeFPS : 60;
+        this._frameAccum = 0;
+
+        // Pause while the page is hidden; resume only what the visibility pause stopped.
+        this._pausedByVisibility = false;
+        this._onVisibilityChange = () => {
+            if (this._destroyed) return;
+            if (document.hidden) {
+                if (this.isRunning) {
+                    this.stop();
+                    this._pausedByVisibility = true;
+                }
+            } else if (this._pausedByVisibility) {
+                this._pausedByVisibility = false;
+                this.start();
+            }
+        };
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', this._onVisibilityChange);
+        }
+    }
+
+    /** @private true while something moves fast enough to deserve activeFPS */
+    _isActive() {
+        const c = this.core3D;
+        if (!c) return false;
+        return Boolean(c.animationManager?.hasActiveAnimations?.() || c.isMorphing?.());
     }
 
     /** @returns {boolean} */
@@ -200,6 +231,8 @@ export class EmotiveMascot3D {
     /** Stop the animation loop. */
     stop() {
         this.isRunning = false;
+        this._frameAccum = 0;
+        this._pausedByVisibility = false;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
@@ -217,8 +250,16 @@ export class EmotiveMascot3D {
             this.animationFrameId = requestAnimationFrame(this._boundAnimate);
             return;
         }
-        const deltaTime = Math.min(currentTime - this.lastFrameTime, FRAME_TIMING.RENDER_DELTA_CAP);
+        this._frameAccum += currentTime - this.lastFrameTime;
         this.lastFrameTime = currentTime;
+        const interval = 1000 / (this._isActive() ? this.activeFPS : this.idleFPS);
+        // 1 ms tolerance so a 60 Hz display is not halved by rounding at a 60 cap.
+        if (this._frameAccum + 1 < interval) {
+            this.animationFrameId = requestAnimationFrame(this._boundAnimate);
+            return;
+        }
+        const deltaTime = Math.min(this._frameAccum, FRAME_TIMING.RENDER_DELTA_CAP);
+        this._frameAccum = 0;
 
         if (this.core3D) {
             this.core3D.render(deltaTime);
@@ -567,6 +608,9 @@ export class EmotiveMascot3D {
         this._destroyed = true;
         this.stop();
 
+        if (typeof document !== 'undefined') {
+            document.removeEventListener('visibilitychange', this._onVisibilityChange);
+        }
         if (this._reducedMotionMediaQuery && this._reducedMotionHandler) {
             this._reducedMotionMediaQuery.removeEventListener?.('change', this._reducedMotionHandler);
             this._reducedMotionMediaQuery = null;
