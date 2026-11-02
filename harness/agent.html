@@ -80,6 +80,11 @@ window.requestAnimationFrame = function (fn) {
 };
 window.cancelAnimationFrame = id => { probe.rafs.delete(id); return oCaf.call(window, id); };
 window.addEventListener('error', e => probe.errors.push(String(e.message || e.error)));
+// Main-thread long tasks (a synchronous shader link shows up here): [startMs, durationMs].
+probe.longTasks = [];
+try {
+    new PerformanceObserver(l => l.getEntries().forEach(e => probe.longTasks.push([Math.round(e.startTime), Math.round(e.duration)]))).observe({ entryTypes: ['longtask'] });
+} catch { /* not supported (WebKit/Firefox): reported as null */ probe.longTasks = null; }
 window.addEventListener('unhandledrejection', e => probe.errors.push('unhandled: ' + String(e.reason && (e.reason.stack || e.reason))));
 
 // ---- engine -----------------------------------------------------------------------------
@@ -94,16 +99,17 @@ const H = {
     mascot: null,
     events: [],
     /**
-     * @param {{ size?: number, surface?: 'dark'|'light', preset?: string, debugShaders?: boolean }} [o]
+     * @param {{ size?: number, surface?: 'dark'|'light', shape?: string, preset?: string, debugShaders?: boolean }} [o]
      */
     async mount(o = {}) {
         const size = o.size ?? 225;
         const surface = o.surface ?? 'dark';
         document.body.classList.toggle('light', surface === 'light');
         stage.style.width = stage.style.height = size + 'px';
+        H.mountedAt = performance.now();
         const m = new EmotiveMascot3D({
-            assetBasePath: '/test/fixtures/stock',
-            coreGeometry: 'crystal',
+            assetBasePath: '/test/fixtures/agent',
+            coreGeometry: o.shape ?? 'hexgem',
             surface,
             debugShaders: o.debugShaders ?? params.has('debugShaders'),
         });
@@ -114,7 +120,11 @@ const H = {
         m.init(stage);
         m.setSurface(surface);
         await m.start();
-        if (o.preset !== null) m.setSSSPreset(o.preset ?? 'sapphire', { immediate: true });
+        // Shaders link off the main thread; nothing is drawn until then.
+        await m.whenVisible();
+        H.visibleMs = Math.round(performance.now() - H.mountedAt);
+        // The base gem (hexgem) is on from mount; a preset here is an explicit override.
+        if (o.preset) m.setSSSPreset(o.preset, { immediate: true });
         H.mascot = m;
         await nextFrames(6);
         return true;
@@ -130,18 +140,24 @@ const H = {
         return m.destroy().then(() => { for (const r of recs) r.closed = true; });
     },
     fire(name) { H.mascot.express(name); },
+    /** longest main-thread task since `sinceMs` (null if the browser has no longtask API) */
+    longestTask(sinceMs = 0) {
+        if (!probe.longTasks) return null;
+        return probe.longTasks.filter(([t]) => t >= sinceMs).reduce((m, [, d]) => Math.max(m, d), 0);
+    },
     /** shader links in flight on the current mascot */
     pendingCompiles() { return H.mascot?.core3D?.renderer?.pendingCompileCount?.() ?? 0; },
     /** electric instances currently alive (arcs on screen) */
     arcs() { return H.mascot?.core3D?.elementSpawner?.activeElements?.size ?? 0; },
     /** resolve once the electric pool has linked (or reject after ms) */
-    async electricReady(ms = 20000) {
+    /** resolve once the electric pool (linked at mount) is ready; returns ms since mount */
+    async electricReady(ms = 30000) {
         const t0 = performance.now();
         while (!H.mascot?.core3D?.elementSpawner?.pools?.get('electricity')?.mesh) {
             if (performance.now() - t0 > ms) throw new Error('electric pool not ready after ' + ms + ' ms');
-            await sleep(50);
+            await sleep(25);
         }
-        return Math.round(performance.now() - t0);
+        return Math.round(performance.now() - H.mountedAt);
     },
     /** fire a gesture and sample arcs for ms; returns the max instance count seen */
     async fireAndWatch(name, ms) {

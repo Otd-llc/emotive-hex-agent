@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { fetchFixture } from '../../helpers/fixtureFetch.js';
+import { linkCore } from '../../helpers/linkCore.js';
 
 // P2a item 2: morphTo(name) works between any two picked shapes and keeps the crystal shader
 // and the soul; calibration + shell/soul scale follow the target entry (flag, not name).
@@ -22,8 +23,8 @@ beforeAll(() => {
 });
 
 async function mount(geometry) {
-    const m = new Core3DManager(canvas(), { geometry, assetBasePath: '/agent/' });
-    await m.waitUntilReady();
+    const m = new Core3DManager(canvas(), { geometry, assetBasePath: '/agent/', preloadElements: [] });
+    await linkCore(m);
     return m;
 }
 
@@ -63,6 +64,11 @@ describe('morphTo between every pair of picked shapes', () => {
         for (const a of CRYSTAL_SHAPES) for (const b of CRYSTAL_SHAPES) if (a !== b) pairs.push([a, b]);
         const seen = new Set();
         let at = 'hexgem';
+        // Crystal to crystal reuses ONE material and ONE soul: no program is released/relinked.
+        const material = m.customMaterial;
+        const soul = m.crystalSoul;
+        const disposed = vi.fn();
+        material.addEventListener('dispose', disposed);
         for (const [a, b] of pairs) {
             if (at !== a) {
                 await morph(m, a);
@@ -79,7 +85,10 @@ describe('morphTo between every pair of picked shapes', () => {
             expect(m.calibrationRotation).toEqual([c.x * DEG, c.y * DEG, c.z * DEG]);
             expect(m.crystalShellBaseScale).toBe(THREE_GEOMETRIES[b].shellScale);
             expect(m.crystalSoul.baseScale).toBe(THREE_GEOMETRIES[b].soulScale);
+            expect(m.customMaterial, `${a}>${b} same material`).toBe(material);
+            expect(m.crystalSoul, `${a}>${b} same soul`).toBe(soul);
         }
+        expect(disposed).not.toHaveBeenCalled();
         expect(seen.size).toBe(30);
         await m.destroy();
     }, 60000);

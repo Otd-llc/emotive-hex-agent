@@ -51,8 +51,8 @@ export const PLANTS = {
     'dark-gem': [['gl_FragColor = vec4(finalColor, finalAlpha);', 'gl_FragColor = vec4(finalColor * 0.02, finalAlpha);']],
     // Teardown gate: the context is never released.
     'no-context-loss': [['.forceContextLoss()', '.getContext()']],
-    // Teardown gate: GL teardown does not wait for in-flight compiles.
-    'early-dispose': [[/async whenCompilesSettled\(\)\{/, 'async whenCompilesSettled(){return;']],
+    // GL gate: the core links synchronously on the first draw (the page freezes on a cold cache).
+    'sync-link': [['async _prelinkCore(){', 'async _prelinkCore(){this._linked=!0,this._resolveVisible(),this._startElementPreloading();return;']],
 };
 
 function applyPlant(src, name) {

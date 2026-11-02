@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { fetchFixture } from '../../helpers/fixtureFetch.js';
+import { linkCore } from '../../helpers/linkCore.js';
 
 // P2a item 3: a `hexgem` base preset applied at mount (no host call needed), and
 // setGemColor(preset, ms): a timed shift (>= 500 ms, the flash-safety floor) and back to base.
@@ -40,9 +41,9 @@ const expectPreset = (u, p) => {
 async function mascot() {
     const m = new EmotiveMascot3D({ assetBasePath: '/agent' });
     // jsdom has no WebGL 2, so init() bails; wire a core directly (as init would).
-    m.core3D = new Core3DManager(canvas(), { geometry: 'hexgem', assetBasePath: '/agent' });
+    m.core3D = new Core3DManager(canvas(), { geometry: 'hexgem', assetBasePath: '/agent', preloadElements: [] });
     m._wireCore();
-    await m.core3D.waitUntilReady();
+    await linkCore(m.core3D);
     return m;
 }
 const step = (m, ms, dt = 10) => {
@@ -56,7 +57,7 @@ describe('hexgem base preset', () => {
     });
 
     it('is on the crystal from the first frame, with no host call', async () => {
-        const c = new Core3DManager(canvas(), { geometry: 'hexgem', assetBasePath: '/agent' });
+        const c = new Core3DManager(canvas(), { geometry: 'hexgem', assetBasePath: '/agent', preloadElements: [] });
         await c.waitUntilReady();
         expectPreset(c.customMaterial.uniforms, SSSPresets.hexgem);
         await c.destroy();

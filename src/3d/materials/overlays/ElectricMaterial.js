@@ -413,6 +413,24 @@ export function createElectricMaterial(options = {}) {
  * @param {THREE.ShaderMaterial} material - Electric material to update
  * @param {number} deltaTime - Time since last frame in seconds
  */
+/**
+ * Re-derive the charge-dependent uniforms of an existing overlay material (the hex agent keeps
+ * ONE overlay material alive so its program is linked once, at mount).
+ * @param {THREE.ShaderMaterial} material
+ * @param {number} charge - 0..1
+ */
+export function setElectricCharge(material, charge) {
+    const u = material?.uniforms;
+    if (!u) return;
+    u.uColor.value.copy(getElectricColor(charge, null));
+    u.uIntensity.value = lerp(0.5, 5.0, charge);
+    u.uArcFrequency.value = lerp(0.5, 8.0, charge);
+    u.uBranchCount.value = Math.floor(lerp(2, 12, charge));
+    u.uArcThickness.value = lerp(0.01, 0.04, charge);
+    u.uFlickerRate.value = lerp(4.0, 20.0, charge);
+    u.uCharge.value = charge;
+}
+
 export function updateElectricMaterial(material, deltaTime) {
     if (material?.uniforms?.uTime) {
         material.uniforms.uTime.value += deltaTime;

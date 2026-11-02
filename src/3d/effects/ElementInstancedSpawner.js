@@ -19,7 +19,7 @@
  */
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { loadGLBGeometry } from '../geometries/ThreeGeometries.js';
 
 // Pool and geometry utilities
 import { ElementInstancePool } from './ElementInstancePool.js';
@@ -157,7 +157,6 @@ export class ElementInstancedSpawner {
 
         // Model geometry cache
         this.geometryCache = new Map(); // modelPath -> BufferGeometry
-        this.loader = new GLTFLoader();
 
         // Merged geometries per element type
         this.mergedGeometries = new Map(); // elementType -> { geometry, modelMap }
@@ -323,12 +322,14 @@ export class ElementInstancedSpawner {
 
         // Load all models for this element type (parallel)
         const loadPromises = config.models.map(modelName => {
-            const modelPath = `${this.assetsBasePath}/${config.basePath}${modelName}`;
-            return this._loadGeometry(modelPath).then(geometry => {
+            const modelPath = `${String(this.assetsBasePath).replace(/\/+$/, '')}/${config.basePath}${modelName}`;
+            return this._loadGeometry(modelPath, config.modelRotation?.[modelName]).then(geometry => {
                 return geometry ? { geometry, name: modelName.replace('.glb', '') } : null;
             });
         });
         const results = await Promise.all(loadPromises);
+        // Torn down while the GLBs loaded: start no link.
+        if (this._disposed) return null;
         const geometries = results.filter(r => r !== null);
 
         if (geometries.length === 0) {
@@ -425,90 +426,14 @@ export class ElementInstancedSpawner {
      * for models that don't need external assets.
      * @private
      */
-    async _loadGeometry(modelPath) {
-        // Check cache
-        if (this.geometryCache.has(modelPath)) {
-            return this.geometryCache.get(modelPath);
-        }
-
-        // Procedural geometry: void-orb is a sphere, no GLB needed
-        if (modelPath.includes('void-orb.glb')) {
-            const geometry = new THREE.IcosahedronGeometry(0.5, 4);
-            this.geometryCache.set(modelPath, geometry);
-            return geometry;
-        }
-
-        // Procedural geometry: void-disk is a circular billboard disk (for singularity/hollow)
-        if (modelPath.includes('void-disk.glb')) {
-            const geometry = new THREE.CircleGeometry(0.5, 32);
-            this.geometryCache.set(modelPath, geometry);
-            return geometry;
-        }
-
-        // Procedural geometry: light-ray is an elongated diamond (billboard ray of light)
-        if (modelPath.includes('light-ray.glb')) {
-            const shape = new THREE.Shape();
-            shape.moveTo(0, 0.6); // Top point (elongated)
-            shape.lineTo(0.12, 0); // Right
-            shape.lineTo(0, -0.6); // Bottom point
-            shape.lineTo(-0.12, 0); // Left
-            shape.closePath();
-            const geometry = new THREE.ShapeGeometry(shape);
-            this.geometryCache.set(modelPath, geometry);
-            return geometry;
-        }
-
-        // Procedural geometry: light-orb is a glowing sphere
-        if (modelPath.includes('light-orb.glb')) {
-            const geometry = new THREE.IcosahedronGeometry(0.4, 3);
-            this.geometryCache.set(modelPath, geometry);
-            return geometry;
-        }
-
+    async _loadGeometry(modelPath, rotation = null) {
+        if (this.geometryCache.has(modelPath)) return this.geometryCache.get(modelPath);
         try {
-            const gltf = await new Promise((resolve, reject) => {
-                this.loader.load(modelPath, resolve, undefined, reject);
-            });
-
-            // Find the first mesh in the scene
-            let geometry = null;
-            gltf.scene.traverse(child => {
-                if (!geometry && child.isMesh) {
-                    ({ geometry } = child);
-                }
-            });
-
-            // Dispose unused GLTF resources (materials, textures, other geometries)
-            gltf.scene.traverse(child => {
-                if (child.isMesh) {
-                    if (child.geometry && child.geometry !== geometry) {
-                        child.geometry.dispose();
-                    }
-                    if (child.material) {
-                        const materials = Array.isArray(child.material) ? child.material : [child.material];
-                        for (const mat of materials) {
-                            for (const key of Object.keys(mat)) {
-                                if (mat[key] && typeof mat[key].dispose === 'function') {
-                                    mat[key].dispose();
-                                }
-                            }
-                            mat.dispose();
-                        }
-                    }
-                }
-            });
-
-            if (geometry) {
-                // void-ring is exported in XZ plane — rotate -90° X to match XY convention of all other rings
-                if (modelPath.includes('void-ring')) {
-                    geometry.rotateX(-Math.PI / 2);
-                }
-                this.geometryCache.set(modelPath, geometry);
-                return geometry;
-            }
-
-            console.warn(`[ElementInstancedSpawner] No mesh found in ${modelPath}`);
-            return null;
+            // Node transforms are baked by the loader; files are used at their own scale.
+            const geometry = await loadGLBGeometry(modelPath, { normalize: false });
+            if (rotation) geometry.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...rotation)));
+            this.geometryCache.set(modelPath, geometry);
+            return geometry;
         } catch (error) {
             console.warn(`[ElementInstancedSpawner] Failed to load ${modelPath}:`, error);
             return null;

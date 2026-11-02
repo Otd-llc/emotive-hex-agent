@@ -134,6 +134,9 @@ export function loadCrystalGeometry(url, opts = {}) {
     return glbCache.get(key).then(g => g.clone());
 }
 
+/** Generic name for the same loader (electric meshes, the soul inclusion). */
+export const loadGLBGeometry = loadCrystalGeometry;
+
 /** Join an asset base path and a file name. */
 export const assetUrl = (base, file) => `${String(base).replace(/\/+$/, '')}/${file}`;
 

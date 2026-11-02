@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
 
-// Fix (a): no background prewarm; raw renderer.compileAsync promises are tracked;
-// destroy() defers GL teardown until they settle, then dispose() + forceContextLoss().
+// Fix (a): no background prewarm loop; link pollers are tracked; destroy() stops them at
+// once (P2a: own poller, no 20 s wait hole), then dispose() + forceContextLoss().
 vi.mock('three', async importOriginal => {
     const THREE = await importOriginal();
     const { makeFakeRendererClass } = await import('../../helpers/fakeWebGLRenderer.js');
@@ -18,7 +18,7 @@ const flush = () => new Promise(r => setTimeout(r, 0));
 const calls = (gl, fn) => gl.log.filter(e => e.fn === fn).length;
 
 describe('ThreeRenderer compile tracking + deferred teardown', () => {
-    it('tracks the raw compileAsync promise until it settles', async () => {
+    it('tracks the link poller until the program is ready', async () => {
         const r = new ThreeRenderer(canvas(), {});
         const gl = r.renderer;
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial());
@@ -30,16 +30,16 @@ describe('ThreeRenderer compile tracking + deferred teardown', () => {
         expect(r.pendingCompileCount()).toBe(0);
     });
 
-    it('destroy() waits for pending compiles, then dispose() + forceContextLoss()', async () => {
+    it('destroy() with a link in flight: stops the poller, then dispose() + forceContextLoss(), no wait', async () => {
         const r = new ThreeRenderer(canvas(), {});
         const gl = r.renderer;
-        r.compileObjectAsync(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()));
-        const done = r.destroy();
-        await flush();
-        expect(calls(gl, 'dispose')).toBe(0);
-        expect(calls(gl, 'forceContextLoss')).toBe(0);
-        gl.settleCompiles();
-        await done;
+        const linked = r.compileObjectAsync(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()));
+        expect(r.pendingCompileCount()).toBe(1);
+        await r.destroy();
+        expect(await linked).toBe(false);
+        const checks = gl.readyChecks;
+        await new Promise(res => setTimeout(res, 40));
+        expect(gl.readyChecks).toBe(checks);
         expect(calls(gl, 'dispose')).toBe(1);
         expect(calls(gl, 'forceContextLoss')).toBe(1);
         const order = gl.log.filter(e => e.fn === 'dispose' || e.fn === 'forceContextLoss').map(e => e.fn);
@@ -74,22 +74,18 @@ describe('Core3DManager teardown', () => {
         expect(calls(gl, 'forceContextLoss')).toBe(1);
     });
 
-    it('keeps materials alive while a compile is pending, then tears down', async () => {
+    it('tears down at once with a link in flight; the poller never queries after close', async () => {
         const m = new Core3DManager(canvas(), { geometry: 'sphere', assetBasePath: '/x/' });
         const gl = m.renderer.renderer;
         const mat = new THREE.MeshBasicMaterial();
-        const disposeSpy = vi.spyOn(mat, 'dispose');
         m.renderer.scene.add(new THREE.Mesh(new THREE.BoxGeometry(), mat));
         m.renderer.compileObjectAsync(new THREE.Mesh(new THREE.BoxGeometry(), mat));
         const spawnerDispose = vi.spyOn(m.elementSpawner, 'dispose');
-        const done = m.destroy();
-        await flush();
-        expect(spawnerDispose).not.toHaveBeenCalled();
-        expect(calls(gl, 'forceContextLoss')).toBe(0);
-        gl.settleCompiles();
-        await done;
+        await m.destroy();
+        const checks = gl.readyChecks;
         expect(spawnerDispose).toHaveBeenCalledTimes(1);
         expect(calls(gl, 'forceContextLoss')).toBe(1);
-        void disposeSpy;
+        await new Promise(res => setTimeout(res, 40));
+        expect(gl.readyChecks).toBe(checks);
     });
 });

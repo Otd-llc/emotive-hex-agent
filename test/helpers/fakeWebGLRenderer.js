@@ -19,7 +19,16 @@ export function makeFakeRendererClass(THREE, { bufferW = 300, bufferH = 200 } = 
             this.state = { reset: () => {} };
             this.info = { programs: [] };
             this.capabilities = { isWebGL2: true, maxSamples: 4 };
-            this.extensions = { get: () => null, has: () => false };
+            // KHR_parallel_shader_compile on by default; tests flip `parallelCompile`.
+            this.parallelCompile = true;
+            this.extensions = {
+                get: name => (name === 'KHR_parallel_shader_compile' && this.parallelCompile ? {} : null),
+                has: name => name === 'KHR_parallel_shader_compile' && this.parallelCompile,
+            };
+            // Program link state for compile(): isReady() counts as a completion-status query.
+            this._programs = new Map();
+            this.readyChecks = 0;
+            this.properties = { get: m => ({ currentProgram: this._programs.get(m) }) };
             this.outputColorSpace = THREE.SRGBColorSpace;
             this.toneMapping = THREE.NoToneMapping;
             this.toneMappingExposure = 1;
@@ -33,7 +42,7 @@ export function makeFakeRendererClass(THREE, { bufferW = 300, bufferH = 200 } = 
             return new Proxy(this, {
                 get: (t, k) => {
                     if (k in t) return t[k];
-                    if (typeof k === 'symbol') return undefined;
+                    if (typeof k === 'symbol' || k === 'then') return undefined; // not a thenable
                     return (...args) => {
                         t.log.push({ fn: k, args });
                         return undefined;
@@ -78,8 +87,18 @@ export function makeFakeRendererClass(THREE, { bufferW = 300, bufferH = 200 } = 
         getDrawingBufferSize(v) {
             return v.set(bufferW, bufferH);
         }
-        compile() {
-            return new Set();
+        /** Like three: returns the Set of materials whose programs were (re)built. */
+        compile(object) {
+            this._rec('compile', []);
+            const set = new Set();
+            object?.traverse?.(o => {
+                if (o.material) set.add(o.material);
+            });
+            for (const m of set) {
+                const prog = { linked: false, isReady: () => (this.readyChecks++, prog.linked) };
+                this._programs.set(m, prog);
+            }
+            return set;
         }
         compileAsync() {
             let resolve;
@@ -88,8 +107,9 @@ export function makeFakeRendererClass(THREE, { bufferW = 300, bufferH = 200 } = 
             this._rec('compileAsync', []);
             return p;
         }
-        /** test helper: settle every pending compileAsync */
+        /** test helper: every program compiled SO FAR finishes linking (+ pending compileAsync) */
         settleCompiles() {
+            for (const p of this._programs.values()) p.linked = true;
             this._pending.splice(0).forEach(r => r());
         }
         dispose() {

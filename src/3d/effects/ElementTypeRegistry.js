@@ -68,7 +68,7 @@ export const ElementTypeRegistry = {
         // Validate required fields
         const required = ['basePath', 'models', 'createMaterial', 'updateMaterial'];
         for (const field of required) {
-            if (!config[field]) {
+            if (config[field] === undefined || config[field] === null) {
                 throw new Error(
                     `[ElementTypeRegistry] Missing required field '${field}' for type '${type}'`
                 );

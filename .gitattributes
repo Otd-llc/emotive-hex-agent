@@ -40,3 +40,7 @@
 *.woff2 binary
 *.ttf binary
 *.eot binary
+
+# Binary assets
+*.glb binary
+*.webp binary

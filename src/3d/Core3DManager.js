@@ -37,7 +37,7 @@ import * as GeometryCache from './utils/GeometryCache.js';
 import { AnimationManager } from './managers/AnimationManager.js';
 import { BehaviorController } from './managers/BehaviorController.js';
 import { BreathingPhaseManager } from './managers/BreathingPhaseManager.js';
-import { createElectricMaterial } from './materials/overlays/ElectricMaterial.js';
+import { createElectricMaterial, setElectricCharge } from './materials/overlays/ElectricMaterial.js';
 import { ElementInstancedSpawner } from './effects/ElementInstancedSpawner.js';
 
 const DEG = Math.PI / 180;
@@ -104,6 +104,11 @@ export class Core3DManager {
         this._destroyed = false;
         this._ready = false; // Flag indicating all async loading is complete
         this._readyPromise = null; // Promise that resolves when ready
+        // Programs of the core, soul and particles are linked OFF the main thread before the
+        // first draw (a cold synchronous link froze the page for seconds); nothing is drawn
+        // until then. whenVisible() resolves at that point.
+        this._linked = false;
+        this._visiblePromise = new Promise(resolve => (this._resolveVisible = resolve));
 
         // Asset base path for textures and models (configurable for GitHub Pages, etc.)
         // Empty string triggers auto-detection in ThreeRenderer
@@ -113,7 +118,8 @@ export class Core3DManager {
 
         // Element preloading options
         // preloadElements: specific elements to preload immediately (e.g., ['fire', 'ice'])
-        this._preloadElements = options.preloadElements || [];
+        // Default: link the electric pool at mount (background) so the FIRST shock has arcs.
+        this._preloadElements = options.preloadElements ?? ALL_ELEMENT_TYPES;
 
         // Load geometry type first (needed to determine if moon = tidally locked)
         this.geometryType = options.geometry || 'sphere';
@@ -190,8 +196,10 @@ export class Core3DManager {
             // Store promise so callers can await full initialization
             this._readyPromise = this._loadAsyncGeometry();
         } else {
-            // No async loading needed - immediately ready
+            // No async loading needed - immediately ready (fallback sphere: drawn as-is)
             this._ready = true;
+            this._linked = true;
+            this._resolveVisible();
             this._readyPromise = Promise.resolve();
         }
 
@@ -1004,7 +1012,7 @@ export class Core3DManager {
         // Guard against rendering before geometry is ready (async loading)
         // This prevents Three.js errors during crystal/rough OBJ loading
         // Callers should use waitUntilReady() before starting render loop
-        if (!this._ready) {
+        if (!this._ready || !this._linked) {
             return;
         }
 
@@ -1045,7 +1053,17 @@ export class Core3DManager {
             // Clear shader uniforms to defaults before swapping to prevent
             // visual remnants (e.g., blood moon effects bleeding to crystal)
             // ═══════════════════════════════════════════════════════════════════
-            if (this.customMaterial) {
+            // Crystal to crystal (same shader, no per-shape overrides): keep the material and
+            // the soul, so the morph never releases and relinks a program and the gem colour
+            // (incl. a running setGemColor shift) carries straight through.
+            const reuseCrystal =
+                this.customMaterialType === 'crystal' &&
+                this.geometryConfig?.crystalFamily === true &&
+                this._targetGeometryConfig?.crystalFamily === true &&
+                !this.geometryConfig.materialOverrides &&
+                !this._targetGeometryConfig.materialOverrides;
+
+            if (this.customMaterial && !reuseCrystal) {
                 resetGeometryState(this.geometryConfig, this.customMaterial);
             }
 
@@ -1054,7 +1072,7 @@ export class Core3DManager {
             this.geometryConfig = this._targetGeometryConfig;
 
             // Dispose old custom material textures before creating new ones (prevent GPU memory leak)
-            if (this.customMaterial) {
+            if (this.customMaterial && !reuseCrystal) {
                 // Use MaterialFactory for proper disposal of textures
                 disposeCustomMaterial(this.customMaterial);
                 // Then dispose the material itself
@@ -1075,18 +1093,16 @@ export class Core3DManager {
             const onTextureReady = _material => {
             };
 
-            const materialResult = createCustomMaterial(
-                this._targetGeometryType,
-                this._targetGeometryConfig,
-                {
-                    glowColor: this.glowColor || [1.0, 1.0, 0.95],
-                    glowIntensity: this.glowIntensity || 1.0,
-                    materialVariant: this.materialVariant,
-                    emotionData, // Pass emotion data for auto-deriving geometry params
-                    assetBasePath: this.assetBasePath,
-                    onTextureReady,
-                }
-            );
+            const materialResult = reuseCrystal
+                ? { material: this.customMaterial, type: 'crystal' }
+                : createCustomMaterial(this._targetGeometryType, this._targetGeometryConfig, {
+                      glowColor: this.glowColor || [1.0, 1.0, 0.95],
+                      glowIntensity: this.glowIntensity || 1.0,
+                      materialVariant: this.materialVariant,
+                      emotionData, // Pass emotion data for auto-deriving geometry params
+                      assetBasePath: this.assetBasePath,
+                      onTextureReady,
+                  });
 
             if (materialResult) {
                 customMaterial = materialResult.material;
@@ -1108,8 +1124,8 @@ export class Core3DManager {
             }
 
             // Invoke material swap callback immediately (before geometry becomes visible)
-            // This allows presets to be applied while scale is still 0
-            if (this.onMaterialSwap) {
+            // This allows presets to be applied while scale is still 0 (a new material only)
+            if (this.onMaterialSwap && !reuseCrystal) {
                 this.onMaterialSwap({
                     geometryType: this._targetGeometryType,
                     material: this.customMaterial,
@@ -1127,7 +1143,13 @@ export class Core3DManager {
 
             // Create or dispose the soul: crystal family only (flag, not name).
             if (this._targetGeometryConfig?.crystalFamily) {
-                if (this.customMaterialType === 'crystal') {
+                if (reuseCrystal && this.crystalSoul) {
+                    // Keep the soul (and its program); take the target entry's sizes.
+                    this.crystalShellBaseScale = this._targetGeometryConfig.shellScale ?? 2.0;
+                    this.crystalSoul.baseScale = this._targetGeometryConfig.soulScale ?? 1.0;
+                    this.crystalSoul.mesh.scale.setScalar(this.crystalSoul.baseScale);
+                    this.crystalInnerCoreBaseScale = this.crystalSoul.baseScale;
+                } else if (this.customMaterialType === 'crystal') {
                     this.createCrystalInnerCore();
                 }
             } else {
@@ -1160,6 +1182,7 @@ export class Core3DManager {
             // No post-swap hold — mascot is at 8% scale (nearly invisible) so
             // textures load from cache or network by the time it's large enough to see.
             // Force opacity to 1.0 immediately to prevent fade-in flash.
+            if (this._electricOverlayMesh) this._electricOverlayMesh.geometry = this.geometry;
             if (this.customMaterial?.uniforms?.opacity) {
                 this.customMaterial.uniforms.opacity.value = 1.0;
             }
@@ -1409,28 +1432,12 @@ export class Core3DManager {
             const mesh = this.renderer?.coreMesh;
             const scene = this.renderer?.scene;
             if (mesh && scene) {
-                // Create overlay mesh if not already created
-                if (!this._electricOverlayMesh) {
-                    // Create electric material with additive blending
-                    this._electricMaterial = createElectricMaterial({
-                        charge: Math.min(1.0, blended.electricOverlay.charge),
-                        opacity: 0.7, // Semi-transparent for overlay
-                    });
-
-                    // Clone the mesh geometry for the overlay
-                    this._electricOverlayMesh = new THREE.Mesh(
-                        mesh.geometry,
-                        this._electricMaterial
-                    );
-
-                    // Slightly larger to avoid z-fighting
-                    this._electricOverlayMesh.scale.setScalar(1.02);
-
-                    // Add as child of original mesh so it follows transforms
-                    mesh.add(this._electricOverlayMesh);
-
-                    // Render after original mesh
-                    this._electricOverlayMesh.renderOrder = mesh.renderOrder + 1;
+                // Attach the (persistent, pre-linked) overlay for this gesture
+                if (!this._electricOverlayMesh?.parent) {
+                    const overlay = this._getElectricOverlay(mesh);
+                    setElectricCharge(this._electricMaterial, Math.min(1.0, blended.electricOverlay.charge));
+                    overlay.geometry = mesh.geometry;
+                    mesh.add(overlay);
                 }
 
                 // Spawn 3D electricity elements
@@ -1455,18 +1462,12 @@ export class Core3DManager {
                 // Store gesture progress for element spawner animation
                 this._currentElectricProgress = blended.electricOverlay.progress ?? null;
             }
-        } else if (this._electricOverlayMesh) {
-            // Remove overlay mesh when electric effect ends
-            const mesh = this.renderer?.coreMesh;
-            if (mesh && this._electricOverlayMesh.parent) {
-                mesh.remove(this._electricOverlayMesh);
+        } else if (this._electricOverlayMesh?.parent) {
+            // Detach the overlay when the electric effect ends (kept for the next gesture,
+            // so its program is never released and relinked)
+            if (this._electricOverlayMesh.parent) {
+                this._electricOverlayMesh.parent.remove(this._electricOverlayMesh);
             }
-            // Dispose resources
-            if (this._electricMaterial) {
-                this._electricMaterial.dispose();
-                this._electricMaterial = null;
-            }
-            this._electricOverlayMesh = null;
 
             // Gracefully exit electricity elements (fade out)
             if (this.elementSpawner) {
@@ -2024,8 +2025,9 @@ export class Core3DManager {
             // NOW we're fully ready for rendering
             this._ready = true;
 
-            // Start element preloading (after ready, so it doesn't block initialization)
-            this._startElementPreloading();
+            // Link the core programs off the main thread, then the electric pool (after, so
+            // the gem appears first and the two links do not compete).
+            this._prelinkCore();
         } catch (error) {
             console.warn(`[Core3DManager] Async geometry load failed (instance ${this._instanceId}):`, error);
             // Mark ready even on failure so render doesn't hang (unless destroyed)
@@ -2136,6 +2138,49 @@ export class Core3DManager {
     }
 
     /**
+     * @private Link the programs the first frame needs (crystal on the canvas, soul into its
+     * linear target, particles) with the off-main-thread poller; draw nothing until done.
+     * Then start the element pre-link (electric pool + gem overlay).
+     */
+    async _prelinkCore() {
+        const r = this.renderer;
+        const jobs = [];
+        if (this.coreMesh) jobs.push(r.compileObjectAsync(this.coreMesh));
+        if (this.crystalSoul?.mesh) {
+            jobs.push(r.compileObjectAsync(this.crystalSoul.mesh, { target: r.soulRenderTarget }));
+        }
+        const points = this.particleOrchestrator?.renderer?.getPoints?.();
+        if (points) jobs.push(r.compileObjectAsync(points));
+        await Promise.all(jobs);
+        if (this._destroyed) return;
+        this._linked = true;
+        this._resolveVisible();
+        this._startElementPreloading();
+    }
+
+    /**
+     * @private The electric gem overlay mesh (one per instance, created on first need).
+     * @param {THREE.Mesh} coreMesh
+     */
+    _getElectricOverlay(coreMesh) {
+        if (!this._electricOverlayMesh) {
+            this._electricMaterial = createElectricMaterial({ charge: 0.8, opacity: 0.7 });
+            this._electricOverlayMesh = new THREE.Mesh(coreMesh.geometry, this._electricMaterial);
+            this._electricOverlayMesh.scale.setScalar(1.02); // avoid z-fighting
+            this._electricOverlayMesh.renderOrder = coreMesh.renderOrder + 1;
+        }
+        return this._electricOverlayMesh;
+    }
+
+    /**
+     * Resolves once the first frame can be drawn without a synchronous shader link.
+     * @returns {Promise<void>}
+     */
+    whenVisible() {
+        return this._visiblePromise;
+    }
+
+    /**
      * Check if the manager is fully initialized and ready for rendering
      * @returns {boolean}
      */
@@ -2173,6 +2218,11 @@ export class Core3DManager {
                     this.elementSpawner.preloadModels(type);
                 }
             });
+            // The electric gem overlay: one material for the instance's lifetime, linked now.
+            if (this._preloadElements.includes('electricity') && this.renderer?.coreMesh) {
+                const overlay = this._getElectricOverlay(this.renderer.coreMesh);
+                this.renderer.compileObjectAsync(overlay);
+            }
         }
 
     }
@@ -2243,6 +2293,12 @@ export class Core3DManager {
         if (this.breathingPhaseManager) {
             this.breathingPhaseManager.dispose();
             this.breathingPhaseManager = null;
+        }
+
+        if (this._electricMaterial) {
+            this._electricMaterial.dispose();
+            this._electricMaterial = null;
+            this._electricOverlayMesh = null;
         }
 
         // Dispose custom material textures if they exist

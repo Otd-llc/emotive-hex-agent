@@ -4,7 +4,7 @@
  * PASS iff: no uncaught errors / console errors / WebGL warnings; every agent context lost
  * (forceContextLoss) once its teardown resolved; zero getProgramParameter calls on an agent
  * context after its teardown resolved; zero engine timers and rAFs pending at the end.
- * Usage: node harness/gates/teardown.mjs [--plant-no-context-loss | --plant-early-dispose]
+ * Usage: node harness/gates/teardown.mjs [--plant-no-context-loss]
  */
 import { runGate, parsePlant, GL_LINE } from './lib.mjs';
 

@@ -231,6 +231,17 @@ export class EmotiveMascot3D {
         this.animationFrameId = requestAnimationFrame(this._boundAnimate);
     }
 
+    /**
+     * Resolves once the gem can be drawn: geometry loaded and its shaders linked off the main
+     * thread (nothing is drawn before, so a cold shader link never freezes the page).
+     * @returns {Promise<void>}
+     */
+    async whenVisible() {
+        if (!this.core3D) return;
+        await this.core3D.waitUntilReady();
+        await this.core3D.whenVisible();
+    }
+
     /** Stop the animation loop. */
     stop() {
         this.isRunning = false;

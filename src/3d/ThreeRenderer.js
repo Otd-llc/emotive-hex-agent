@@ -14,8 +14,9 @@
 
 import * as THREE from 'three';
 
-// Upper bound on a single shader pre-link. Past this we stop waiting rather than wedge the
-// caller; the program still links lazily on first render.
+// Link-completion poll interval (three's compileAsync uses the same).
+const LINK_POLL_MS = 10;
+// Safety cap for whenCompilesSettled(); pollers stop at beginClose(), so it is never reached.
 const COMPILE_TIMEOUT_MS = 20000;
 
 export class ThreeRenderer {
@@ -31,8 +32,9 @@ export class ThreeRenderer {
         this.canvas = canvas;
         this.options = options;
         this._destroyed = false;
-        // Raw renderer.compileAsync promises still polling (fix a): GL teardown waits on them.
+        // Link pollers still running (fix a); beginClose() stops them, teardown never waits.
         this._pendingCompiles = new Set();
+        this._pollers = new Set();
 
         this.scene = new THREE.Scene();
         this.scene.background = null;
@@ -188,9 +190,10 @@ export class ThreeRenderer {
         this.coreMesh.geometry = newGeometry;
 
         if (customMaterial) {
-            if (this.coreMesh.material && this.coreMesh.material !== this.glowMaterial) {
-                this.disposeMaterial(this.coreMesh.material);
-            }
+            const old = this.coreMesh.material;
+            // A reused material (crystal to crystal morph) stays alive: disposing it would
+            // release its program and force a relink.
+            if (old && old !== this.glowMaterial && old !== customMaterial) this.disposeMaterial(old);
             this.coreMesh.material = customMaterial;
             if (customMaterial.uniforms?.resolution) {
                 this.renderer.getDrawingBufferSize(this._drawingBufferSize);
@@ -467,37 +470,62 @@ export class ThreeRenderer {
     }
 
     /**
-     * Pre-link an object's shader program off the main thread (KHR_parallel_shader_compile).
+     * Pre-link an object's shader programs off the main thread (KHR_parallel_shader_compile).
+     * Uses renderer.compile() plus OUR OWN completion poller instead of three's compileAsync:
+     * the poller stops the moment close begins, so no completion-status query can follow a
+     * close and teardown never waits on a link (no timeout hole). Without the extension the
+     * link is synchronous and there is nothing to poll.
      * @param {THREE.Object3D} object
-     * @returns {Promise<void>}
+     * @param {{ target?: THREE.WebGLRenderTarget|null }} [opts] - the target the object is
+     *   drawn into (the program variant differs between the canvas and a linear target)
+     * @returns {Promise<boolean>} true once linked, false if cancelled or failed
      */
-    async compileObjectAsync(object) {
-        if (!object || !this.renderer || !this.camera || this._contextLost || this._closing) return;
-        const savedTarget = this.renderer.getRenderTarget();
+    async compileObjectAsync(object, { target = null } = {}) {
+        if (!object || !this.renderer || !this.camera || this._contextLost || this._closing) return false;
+        const gl = this.renderer;
+        const savedTarget = gl.getRenderTarget();
+        let materials;
         try {
-            // Layer 0 renders straight to the canvas, so compile the canvas variant.
-            this.renderer.setRenderTarget(null);
-            const raw = this.renderer.compileAsync(object, this.camera, this.scene);
-            this._trackCompile(raw);
-            let timer;
-            await Promise.race([
-                raw,
-                new Promise(resolve => (timer = setTimeout(resolve, COMPILE_TIMEOUT_MS))),
-            ]);
-            clearTimeout(timer);
+            gl.setRenderTarget(target);
+            materials = gl.compile(object, this.camera, this.scene);
         } catch (error) {
-            console.warn('[ThreeRenderer] compileAsync failed, falling back to lazy compile', error);
+            console.warn('[ThreeRenderer] shader compile failed, falling back to lazy compile', error);
+            return false;
         } finally {
-            if (!this._destroyed && this.renderer) this.renderer.setRenderTarget(savedTarget);
+            if (!this._destroyed) gl.setRenderTarget(savedTarget);
         }
+        if (!gl.extensions.get('KHR_parallel_shader_compile') || !materials?.size) return true;
+
+        const poll = { timer: null, finish: null };
+        const raw = new Promise(resolve => {
+            poll.finish = ok => {
+                clearTimeout(poll.timer);
+                this._pollers.delete(poll);
+                resolve(ok);
+            };
+            const check = () => {
+                if (this._closing || this._destroyed || this._contextLost) return poll.finish(false);
+                for (const m of materials) {
+                    const program = gl.properties.get(m)?.currentProgram;
+                    if (!program || program.isReady()) materials.delete(m);
+                }
+                if (materials.size === 0) return poll.finish(true);
+                poll.timer = setTimeout(check, LINK_POLL_MS);
+            };
+            this._pollers.add(poll);
+            check();
+        });
+        this._trackCompile(raw);
+        return raw;
     }
 
     /**
-     * Refuse new shader compiles from now on (teardown has begun). Compiles already in
-     * flight are still awaited by whenCompilesSettled().
+     * Refuse new shader compiles from now on (teardown has begun) and stop every link poller
+     * at once (they resolve false).
      */
     beginClose() {
         this._closing = true;
+        for (const poll of [...this._pollers]) poll.finish(false);
     }
 
     /** @private */
@@ -513,7 +541,7 @@ export class ThreeRenderer {
     }
 
     /**
-     * Resolves once every tracked compileAsync has settled (capped at COMPILE_TIMEOUT_MS).
+     * Resolves once every link poller has settled (they stop at beginClose()).
      * @returns {Promise<void>}
      */
     async whenCompilesSettled() {
