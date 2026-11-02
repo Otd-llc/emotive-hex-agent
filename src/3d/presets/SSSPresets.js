@@ -18,34 +18,51 @@
  * Each preset contains uniform values for the SSS shader
  */
 export const SSSPresets = {
-    // The hex agent's base gem. Starts from sapphire; the engine look round (P4) tunes it.
+    // The hex agent's base gem = the sapphire look (A): a deep, less saturated blue. The hue is
+    // the normalised absorption; sssStrength is how deep it runs (Beer-law path in the shader).
     hexgem: {
-        sssStrength: 2.2,
-        sssAbsorption: [0.15, 0.4, 4.0],
+        sssStrength: 1.5,
+        sssAbsorption: [0.55, 0.95, 3.2],
         sssScatterDistance: [0.1, 0.15, 0.5],
         sssThicknessBias: 0.65,
         sssThicknessScale: 1.8,
         sssCurvatureScale: 3.0,
         sssAmbient: 0.1,
-        frostiness: 0.18,
-        innerGlowStrength: 0.15,
+        frostiness: 0.12,
+        innerGlowStrength: 0.75,
         fresnelIntensity: 1.3,
         causticIntensity: 1.0,
-        emotionColorBleed: 0.35,
+        emotionColorBleed: 0.2,
     },
+    // The quartz look (B): near-clear, a cool hint; the look supplies the electric-blue core.
     quartz: {
-        sssStrength: 0.8,
-        sssAbsorption: [2.8, 2.9, 3.0],
+        sssStrength: 0.5,
+        sssAbsorption: [2.6, 2.8, 3.0],
         sssScatterDistance: [0.2, 0.2, 0.25],
         sssThicknessBias: 0.6,
         sssThicknessScale: 1.8,
         sssCurvatureScale: 3.0,
         sssAmbient: 0.12,
-        frostiness: 0.15,
-        innerGlowStrength: 0.2,
+        frostiness: 0.08,
+        innerGlowStrength: 1.0,
         fresnelIntensity: 1.5,
         causticIntensity: 1.2,
         emotionColorBleed: 0.0,
+    },
+    // The ruby-violet look (C): a deep wine-violet between ruby and amethyst.
+    'ruby-violet': {
+        sssStrength: 2.0,
+        sssAbsorption: [3.0, 0.2, 2.5],
+        sssScatterDistance: [0.4, 0.05, 0.4],
+        sssThicknessBias: 0.68,
+        sssThicknessScale: 1.9,
+        sssCurvatureScale: 2.8,
+        sssAmbient: 0.08,
+        frostiness: 0.1,
+        innerGlowStrength: 0.8,
+        fresnelIntensity: 1.3,
+        causticIntensity: 1.0,
+        emotionColorBleed: 0.2,
     },
     emerald: {
         sssStrength: 2.0,

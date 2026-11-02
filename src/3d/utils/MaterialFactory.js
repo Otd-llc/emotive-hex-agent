@@ -27,6 +27,7 @@ const textureLoader = {
 };
 import { getCrystalShaders, CRYSTAL_DEFAULT_UNIFORMS } from '../shaders/crystalWithSoul.js';
 import { SSSPresets, BASE_GEM } from '../presets/SSSPresets.js';
+import { LOOKS, BASE_LOOK } from '../presets/looks.js';
 import { getSurface, onSurfaceChange } from '../materials/surface.js';
 import { DEFORMATION_DEFAULT_UNIFORMS } from '../shaders/utils/deformation.js';
 import { CRACK_DEFAULT_UNIFORMS } from '../shaders/utils/objectSpaceCracks.js';
@@ -75,7 +76,14 @@ function createCrystalMaterial(glowColor, glowIntensity, overrides = {}, assetBa
             uSurface: { value: getSurface() === 'light' ? 1 : 0 },
             uGlow: { value: CRYSTAL_DEFAULT_UNIFORMS.uGlow },
             uRim: { value: CRYSTAL_DEFAULT_UNIFORMS.uRim },
-            uRimInk: { value: new THREE.Color(...CRYSTAL_DEFAULT_UNIFORMS.uRimInk) },
+            // Look (setLook): starts on the base look; a morph re-applies the current one.
+            uRimInk: { value: new THREE.Color(...LOOKS[BASE_LOOK].uRimInk) },
+            uEnv: { value: LOOKS[BASE_LOOK].uEnv },
+            uBody: { value: LOOKS[BASE_LOOK].uBody },
+            uDepth: { value: LOOKS[BASE_LOOK].uDepth },
+            uCore: { value: new THREE.Vector3(...LOOKS[BASE_LOOK].uCore) },
+            uCoreMix: { value: LOOKS[BASE_LOOK].uCoreMix },
+            uClarity: { value: LOOKS[BASE_LOOK].uClarity },
             frostiness: { value: overrides.frostiness ?? sssPreset?.frostiness ?? CRYSTAL_DEFAULT_UNIFORMS.frostiness },
             fresnelPower: {
                 value: overrides.fresnelPower ?? CRYSTAL_DEFAULT_UNIFORMS.fresnelPower,
@@ -203,35 +211,6 @@ function createCrystalMaterial(glowColor, glowIntensity, overrides = {}, assetBa
             emotionColorBleed: {
                 value: overrides.emotionColorBleed ?? sssPreset?.emotionColorBleed ?? 0.0,
             },
-            // Component-specific blend layers
-            // Shell layers
-            shellLayer1Mode: { value: CRYSTAL_DEFAULT_UNIFORMS.shellLayer1Mode },
-            shellLayer1Strength: { value: CRYSTAL_DEFAULT_UNIFORMS.shellLayer1Strength },
-            shellLayer1Enabled: { value: CRYSTAL_DEFAULT_UNIFORMS.shellLayer1Enabled },
-            shellLayer2Mode: { value: CRYSTAL_DEFAULT_UNIFORMS.shellLayer2Mode },
-            shellLayer2Strength: { value: CRYSTAL_DEFAULT_UNIFORMS.shellLayer2Strength },
-            shellLayer2Enabled: { value: CRYSTAL_DEFAULT_UNIFORMS.shellLayer2Enabled },
-            // Soul layers
-            soulLayer1Mode: { value: CRYSTAL_DEFAULT_UNIFORMS.soulLayer1Mode },
-            soulLayer1Strength: { value: CRYSTAL_DEFAULT_UNIFORMS.soulLayer1Strength },
-            soulLayer1Enabled: { value: CRYSTAL_DEFAULT_UNIFORMS.soulLayer1Enabled },
-            soulLayer2Mode: { value: CRYSTAL_DEFAULT_UNIFORMS.soulLayer2Mode },
-            soulLayer2Strength: { value: CRYSTAL_DEFAULT_UNIFORMS.soulLayer2Strength },
-            soulLayer2Enabled: { value: CRYSTAL_DEFAULT_UNIFORMS.soulLayer2Enabled },
-            // Rim layers
-            rimLayer1Mode: { value: CRYSTAL_DEFAULT_UNIFORMS.rimLayer1Mode },
-            rimLayer1Strength: { value: CRYSTAL_DEFAULT_UNIFORMS.rimLayer1Strength },
-            rimLayer1Enabled: { value: CRYSTAL_DEFAULT_UNIFORMS.rimLayer1Enabled },
-            rimLayer2Mode: { value: CRYSTAL_DEFAULT_UNIFORMS.rimLayer2Mode },
-            rimLayer2Strength: { value: CRYSTAL_DEFAULT_UNIFORMS.rimLayer2Strength },
-            rimLayer2Enabled: { value: CRYSTAL_DEFAULT_UNIFORMS.rimLayer2Enabled },
-            // SSS layers
-            sssLayer1Mode: { value: CRYSTAL_DEFAULT_UNIFORMS.sssLayer1Mode },
-            sssLayer1Strength: { value: CRYSTAL_DEFAULT_UNIFORMS.sssLayer1Strength },
-            sssLayer1Enabled: { value: CRYSTAL_DEFAULT_UNIFORMS.sssLayer1Enabled },
-            sssLayer2Mode: { value: CRYSTAL_DEFAULT_UNIFORMS.sssLayer2Mode },
-            sssLayer2Strength: { value: CRYSTAL_DEFAULT_UNIFORMS.sssLayer2Strength },
-            sssLayer2Enabled: { value: CRYSTAL_DEFAULT_UNIFORMS.sssLayer2Enabled },
             // ═══════════════════════════════════════════════════════════════
             // DEFORMATION UNIFORMS - Localized vertex displacement
             // Values from deformation.js utility module
@@ -269,6 +248,8 @@ function createCrystalMaterial(glowColor, glowIntensity, overrides = {}, assetBa
         side: THREE.DoubleSide,
         depthWrite: true, // Soul renders to separate RT via texture sampling, not depth
         blending: THREE.NormalBlending,
+        // The crystal shader tone-maps itself (hue-preserving); ACES turns saturated blue violet.
+        toneMapped: false,
     });
 
     // setSurface() reaches live crystals without a remount; dropped with the material.
