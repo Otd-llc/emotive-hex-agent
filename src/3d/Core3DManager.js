@@ -982,6 +982,25 @@ export class Core3DManager {
     }
 
     /**
+     * Ramp the crystal's in-shader glow (uGlow) to `level` over `ms`.
+     * @param {number} level - 1 = rest
+     * @param {number} ms
+     */
+    setGlow(level, ms) {
+        const u = this.customMaterial?.uniforms?.uGlow;
+        if (!u) return;
+        this._glowRamp = { from: u.value, to: Math.max(0, level), ms: Math.max(1, ms), t: 0 };
+    }
+
+    /**
+     * Shrink to scale 0 (mirror of growIn) and stay hidden until growIn.
+     * @param {number} [duration=500]
+     */
+    shrinkOut(duration = 500) {
+        this.geometryMorpher.shrinkOut(this.geometryType, duration);
+    }
+
+    /**
      * Start a grow-in animation from scale 0 to 1
      * Used for initial appearance of mascots (pop-in effect)
      * @param {number} duration - Duration in milliseconds (default: 500ms)
@@ -1755,6 +1774,15 @@ export class Core3DManager {
             if (this.customMaterial.uniforms) {
                 // Update time for animation (convert ms to seconds for sane speed values)
                 this.customMaterial.uniforms.time.value += deltaTime / 1000;
+
+                // Host-driven glow ramp (setGlow)
+                const gr = this._glowRamp;
+                if (gr && this.customMaterial.uniforms.uGlow) {
+                    gr.t = Math.min(1, gr.t + deltaTime / gr.ms);
+                    const e = gr.t * gr.t * (3 - 2 * gr.t);
+                    this.customMaterial.uniforms.uGlow.value = gr.from + (gr.to - gr.from) * e;
+                    if (gr.t >= 1) this._glowRamp = null;
+                }
 
                 // Update glow intensity - respects coreGlowEnabled toggle
                 if (this.customMaterial.uniforms.glowIntensity) {

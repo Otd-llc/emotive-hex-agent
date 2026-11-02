@@ -113,6 +113,8 @@ export class GeometryMorpher {
         this.isPausedAtSwap = false; // Reset pause flag
         this.pausedAtTime = 0;
         this.isGrowIn = false; // Not a grow-in animation
+        this.isShrinkOut = false;
+        this.hidden = false;
         this._interruptedTarget = null;
 
         return true;
@@ -136,10 +138,12 @@ export class GeometryMorpher {
      * @returns {boolean} True if grow-in started
      */
     growIn(geometryType, duration = 500) {
-        // If already transitioning, skip
-        if (this.isTransitioning) {
+        // If already transitioning, skip (a running shrinkOut is replaced)
+        if (this.isTransitioning && !this.isShrinkOut) {
             return false;
         }
+        this.isShrinkOut = false;
+        this.hidden = false;
 
         // Start grow-in transition (just the grow phase, no shrink)
         this.currentGeometryType = geometryType;
@@ -191,7 +195,7 @@ export class GeometryMorpher {
                 isTransitioning: false,
                 progress: 0,
                 visualProgress: 0,
-                scaleMultiplier: 1.0,
+                scaleMultiplier: this.hidden ? 0 : 1.0,
             };
         }
 
@@ -251,6 +255,37 @@ export class GeometryMorpher {
     }
 
     /**
+     * Shrink-out: scale 1 -> 0 with the exact mirror of growIn's curve; the mesh then stays
+     * hidden (scale 0) until growIn() or a morph.
+     * @param {string} geometryType
+     * @param {number} [duration=500]
+     * @returns {boolean}
+     */
+    shrinkOut(geometryType, duration = 500) {
+        if (this.isTransitioning && !this.isGrowIn) return false;
+        this.currentGeometryType = geometryType;
+        this.targetGeometryType = geometryType;
+        this.morphStartTime = clockNow();
+        this.morphDuration = duration;
+        this.morphProgress = 0;
+        this.visualProgress = 0;
+        this.isTransitioning = true;
+        this.hasSwappedGeometry = true;
+        this.isPausedAtSwap = false;
+        this.pausedAtTime = 0;
+        this.isGrowIn = false;
+        this.isShrinkOut = true;
+        return true;
+    }
+
+    /** growIn's easeOutBack, 0 -> 1 (with overshoot) */
+    _growCurve(p) {
+        const c1 = 1.70158;
+        const c3 = c1 + 1;
+        return Math.max(0, 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2));
+    }
+
+    /**
      * Calculate scale multiplier for shrink/grow animation
      * Shrinks to 0 at midpoint for invisible geometry swap, then grows back
      * Uses smooth easing for jaunty blink effect
@@ -260,12 +295,12 @@ export class GeometryMorpher {
     calculateScaleMultiplier(progress) {
         // For grow-in animations, just scale 0→1 (no shrink phase)
         if (this.isGrowIn) {
-            // Use easeOutBack for bouncy pop-in effect
             // easeOutBack: overshoots slightly then settles
-            const c1 = 1.70158;
-            const c3 = c1 + 1;
-            const eased = 1 + c3 * Math.pow(progress - 1, 3) + c1 * Math.pow(progress - 1, 2);
-            return Math.max(0, eased); // Clamp to prevent negative scale
+            return this._growCurve(progress);
+        }
+        if (this.isShrinkOut) {
+            // Mirror of growIn: scale(t) = growIn scale(1 - t)
+            return this._growCurve(1 - progress);
         }
 
         // Shrink phase (0 to 0.5): scale goes from 1.0 to minScale
@@ -294,6 +329,9 @@ export class GeometryMorpher {
      * Complete the morph transition
      */
     completeMorph() {
+        if (this.isShrinkOut) this.hidden = true;
+        this.isShrinkOut = false;
+        this.isGrowIn = false;
         this.currentGeometryType = this.targetGeometryType;
         this.targetGeometryType = null;
         this.isTransitioning = false;

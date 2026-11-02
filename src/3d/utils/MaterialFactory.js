@@ -73,6 +73,9 @@ function createCrystalMaterial(glowColor, glowIntensity, overrides = {}, assetBa
             opacity: { value: 1.0 },
             // 0 = dark page, 1 = light page; kept live by the surface listener below (fix d).
             uSurface: { value: getSurface() === 'light' ? 1 : 0 },
+            uGlow: { value: CRYSTAL_DEFAULT_UNIFORMS.uGlow },
+            uRim: { value: CRYSTAL_DEFAULT_UNIFORMS.uRim },
+            uRimInk: { value: new THREE.Color(...CRYSTAL_DEFAULT_UNIFORMS.uRimInk) },
             frostiness: { value: overrides.frostiness ?? sssPreset?.frostiness ?? CRYSTAL_DEFAULT_UNIFORMS.frostiness },
             fresnelPower: {
                 value: overrides.fresnelPower ?? CRYSTAL_DEFAULT_UNIFORMS.fresnelPower,

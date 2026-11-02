@@ -84,6 +84,9 @@ uniform vec3 emotionColor;
 uniform float glowIntensity;
 uniform float opacity;
 uniform float uSurface;        // 0 = dark page, 1 = light page (setSurface)
+uniform float uGlow;           // host-driven inner glow level (setGlow), 1 = rest
+uniform float uRim;            // rim (fresnel) level, 1 = rest
+uniform vec3 uRimInk;          // light surface: the dark rim colour that holds on cream
 
 // Crystal appearance controls
 uniform float frostiness;        // 0 = clear glass, 1 = fully frosted (default: 0.7)
@@ -561,7 +564,7 @@ void main() {
     // FRESNEL RIM - Bright emotion-colored edge glow
     // ═══════════════════════════════════════════════════════════════════════
     vec3 rimColor = mix(vec3(0.5, 0.9, 1.0), emotionColor, 0.6);
-    vec3 rimGlow = rimColor * fresnel * 1.2;
+    vec3 rimGlow = rimColor * fresnel * 1.2 * uRim * mix(1.0, uGlow, 0.5);
 
     // ═══════════════════════════════════════════════════════════════════════
     // RIM BLEND LAYERS - Apply to fresnel rim glow
@@ -620,7 +623,7 @@ void main() {
 
     // Add soul glow on top (additive, not replacement) - concentrated in center
     // Soul should illuminate dark areas but not wash out entirely
-    float soulBlendFactor = soulIntensity * 0.8;
+    float soulBlendFactor = soulIntensity * 0.8 * uGlow;
     finalColor += soulColor * soulBlendFactor;
 
     // Apply texture - blend based on texture brightness and strength
@@ -853,7 +856,7 @@ void main() {
         float soulStrength = mix(0.8, 0.25, smoothstep(0.15, 0.7, thicknessMultiplier));
         float crystalFacing = abs(dot(normal, viewDir));
         float soulEdgeAtten = smoothstep(0.0, 0.25, crystalFacing);
-        vec3 soulContrib = soulGlow * soulStrength * soulEdgeAtten;
+        vec3 soulContrib = soulGlow * soulStrength * soulEdgeAtten * uGlow;
         // Luminance-based soft cap: preserve hue, prevent white bloom blowout
         float soulLum = dot(soulContrib, vec3(0.299, 0.587, 0.114));
         soulContrib *= min(1.0, 0.45 / max(soulLum, 0.001));
@@ -870,7 +873,7 @@ void main() {
         float innerGlow = coreProximity * emotionColorBleed * 0.5;
 
         // Add pure emotion color as inner light
-        finalColor += emotionColor * innerGlow * 0.4;
+        finalColor += emotionColor * innerGlow * 0.4 * uGlow;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -896,7 +899,11 @@ void main() {
     // Light page: deepen the colour and raise the alpha floor so the gem holds on a cream
     // field instead of washing out (starting values; the P4 look round tunes them).
     finalColor = mix(finalColor, finalColor * 0.85, uSurface);
+    // ...and an ink rim: silhouette edges darken toward uRimInk (no screen-space bloom).
+    float inkRim = clamp(fresnel * 1.4 * uRim, 0.0, 0.85) * uSurface;
+    finalColor = mix(finalColor, uRimInk, inkRim);
     finalAlpha = mix(finalAlpha, max(finalAlpha, 0.55), uSurface);
+    finalAlpha = max(finalAlpha, inkRim);
     gl_FragColor = vec4(finalColor, finalAlpha);
     // Encode here: there is no post pass to tone-map and sRGB-encode (fix c).
     #include <tonemapping_fragment>
@@ -924,6 +931,9 @@ export const CRYSTAL_DEFAULT_UNIFORMS = {
     emotionColor: [0.0, 0.8, 1.0], // Default cyan
     glowIntensity: 1.0,
     opacity: 1.0,
+    uGlow: 1.0,
+    uRim: 1.0,
+    uRimInk: [0.05, 0.07, 0.12], // deep navy ink (starting value; the look round tunes it)
 
     // Crystal appearance (tuned for crystal.obj)
     frostiness: 0.55, // Frosted translucency (slightly less opaque)

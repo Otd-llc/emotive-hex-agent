@@ -24,6 +24,9 @@ import { enterStepMode, exitStepMode, advance as advanceClock } from './utils/cl
 import { seed as seedRng } from './utils/rng.js';
 import { FLASH_SAFETY } from './flashSafety.js';
 
+/** setGlow() never completes a change faster than this (flash safety). */
+export const GLOW_MIN_MS = 250;
+
 /** Geometry names morphTo() accepts. */
 const VALID_GEOMETRIES = Object.keys(THREE_GEOMETRIES);
 
@@ -463,6 +466,26 @@ export class EmotiveMascot3D {
     growIn(duration = 500) {
         if (this.core3D) this.core3D.growIn(duration);
         this.eventManager.emit('animation:growIn', { duration });
+    }
+
+    /**
+     * Shrink out to scale 0 (the exact mirror of growIn); the gem stays hidden until growIn.
+     * @param {number} [duration=500]
+     */
+    shrinkOut(duration = 500) {
+        if (this.core3D) this.core3D.shrinkOut(duration);
+        this.eventManager.emit('animation:shrinkOut', { duration });
+    }
+
+    /**
+     * Ramp the gem's in-shader glow (inner light + rim) to `level` over `ms` (never faster than
+     * GLOW_MIN_MS, so a lift and fall stay within 2 per second). 1 = rest.
+     * @param {number} level
+     * @param {number} [ms=GLOW_MIN_MS]
+     */
+    setGlow(level, ms = GLOW_MIN_MS) {
+        if (!this.core3D || !Number.isFinite(level)) return;
+        this.core3D.setGlow(level, Math.max(GLOW_MIN_MS, Number(ms) || 0));
     }
 
     /**
