@@ -16,7 +16,20 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const S = (p) => path.resolve(ROOT, 'src', p);
 
 /** Source modules stubbed at build time (paths relative to src/). Empty once deletion is done. */
-export const STUBS = [].map(S);
+export const STUBS = [
+    '3d/geometries/Sun.js', '3d/geometries/Moon.js',
+    '3d/effects/SolarEclipse.js', '3d/effects/LunarEclipse.js', '3d/effects/BaileysBeads.js',
+    '3d/shaders/sunWithBlendLayers.js',
+    '3d/audio/AudioBridge.js', '3d/animation/DanceChoreographer.js', '3d/animation/Rhythm3DAdapter.js',
+    'core/morpher/AgentBPMDetector.js', 'core/audio/AudioInterpreter.js',
+    '3d/effects/SmokeParticleSystem.js', '3d/effects/ParticleAtmosphericsManager.js',
+    '3d/AmbientOcclusionPass.js', '3d/effects/VelocityMotionBlurPass.js', '3d/UnrealBloomPassAlpha.js',
+    '3d/debug/PerformanceProfiler.js', '3d/effects/CrackLayer.js', '3d/effects/shatter/ShatterSystem.js',
+    '3d/materials/overlays/WaterMaterial.js', '3d/materials/overlays/FireMaterial.js',
+    '3d/materials/overlays/VoidMaterial.js', '3d/materials/overlays/IceMaterial.js',
+    '3d/materials/overlays/LightMaterial.js', '3d/materials/overlays/EarthMaterial.js',
+    '3d/materials/overlays/NatureMaterial.js',
+].map(S);
 
 const isStubbed = (abs) => STUBS.includes(abs);
 
