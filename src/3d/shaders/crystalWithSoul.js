@@ -935,7 +935,7 @@ export const CRYSTAL_DEFAULT_UNIFORMS = {
     uRim: 1.0,
     uRimInk: [0.05, 0.07, 0.12], // deep navy ink (starting value; the look round tunes it)
 
-    // Crystal appearance (tuned for crystal.obj)
+    // Crystal appearance (tuned for the stock crystal; the look round retunes for hexgem)
     frostiness: 0.55, // Frosted translucency (slightly less opaque)
     fresnelPower: 2.8, // Edge brightness falloff (slightly sharper)
     fresnelIntensity: 0.25, // Edge brightness strength (subtle rim, less bloom blowout)

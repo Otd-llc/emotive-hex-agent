@@ -16,9 +16,10 @@ purpose-made Blender geometries.
 
 Dropped: the 2D engine, music, rhythm, BPM, dance and groove systems, every other element, the
 moon/sun/eclipse geometry, orbit controls, the profiler, shatter and cracks, screen-space bloom,
-motion blur, ambient occlusion, the HDRI path, and every stock asset. The stock crystal and
-electric meshes under `test/fixtures/stock/` are test fixtures only, removed once the new
-Blender-made assets land.
+motion blur, ambient occlusion, the HDRI path, and every stock asset. The engine loads only
+the Blender-made agent assets (six crystal shapes, the soul inclusion, five electric meshes,
+one detail map); a copy lives under `test/fixtures/agent/`, hashed against its `sha256.json`
+(the source of truth is the host app's `public/agent/`).
 
 The engine exposes primitives (emotion, undertone, gesture, gem colour, morph, particles); the
 host app owns the agent's state table, timing and copy.

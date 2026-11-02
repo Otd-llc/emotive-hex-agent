@@ -18,7 +18,6 @@ const TYPES = {
     '.js': 'text/javascript; charset=utf-8',
     '.mjs': 'text/javascript; charset=utf-8',
     '.json': 'application/json',
-    '.obj': 'text/plain',
     '.glb': 'model/gltf-binary',
     '.webp': 'image/webp',
     '.png': 'image/png',

@@ -83,7 +83,6 @@ export const MODEL_SIZES = {
     // Electricity models - angular, energetic
     'arc-small': { class: 'small', variance: 0.25 },
     'arc-medium': { class: 'medium', variance: 0.2 },
-    'arc-cluster': { class: 'large', variance: 0.2 },
     'spark-node': { class: 'tiny', variance: 0.3 },
     'lightning-ring': { class: 'large', variance: 0.15 },
 
@@ -172,7 +171,6 @@ export const MODEL_ORIENTATIONS = {
     // Electricity
     'arc-small': { mode: 'tangent', tiltAngle: 0.1 },
     'arc-medium': { mode: 'tangent', tiltAngle: 0.15 },
-    'arc-cluster': { mode: 'outward', tiltAngle: 0.3 },
     'spark-node': { mode: 'outward', tiltAngle: 0.4 },
     'lightning-ring': { mode: 'flat', tiltAngle: 0 },
 
