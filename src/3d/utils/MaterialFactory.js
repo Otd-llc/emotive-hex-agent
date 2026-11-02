@@ -26,7 +26,7 @@ const textureLoader = {
     },
 };
 import { getCrystalShaders, CRYSTAL_DEFAULT_UNIFORMS } from '../shaders/crystalWithSoul.js';
-import { SSS_PRESETS } from '../shaders/utils/subsurfaceScattering.js';
+import { SSSPresets, BASE_GEM } from '../presets/SSSPresets.js';
 import { getSurface, onSurfaceChange } from '../materials/surface.js';
 import { DEFORMATION_DEFAULT_UNIFORMS } from '../shaders/utils/deformation.js';
 import { CRACK_DEFAULT_UNIFORMS } from '../shaders/utils/objectSpaceCracks.js';
@@ -41,7 +41,7 @@ import { CRACK_DEFAULT_UNIFORMS } from '../shaders/utils/objectSpaceCracks.js';
 export function createCustomMaterial(geometryType, geometryConfig, options = {}) {
     const { glowColor = [1.0, 1.0, 0.95], glowIntensity = 1.0, assetBasePath } = options;
     if (geometryConfig?.crystalFamily !== true) return null;
-    return createCrystalMaterial(glowColor, glowIntensity, geometryConfig.materialOverrides || { sssPreset: 'quartz' }, assetBasePath);
+    return createCrystalMaterial(glowColor, glowIntensity, geometryConfig.materialOverrides || { sssPreset: BASE_GEM }, assetBasePath);
 }
 
 /** The gem detail map (R edge thickness, G honeycomb, B noise), shared by every shape. */
@@ -62,7 +62,8 @@ function createCrystalMaterial(glowColor, glowIntensity, overrides = {}, assetBa
     );
 
     // Get SSS preset if specified, otherwise use defaults
-    const sssPreset = overrides.sssPreset ? SSS_PRESETS[overrides.sssPreset] : null;
+    // Every crystal starts on a gem preset (the base gem unless the entry overrides it).
+    const sssPreset = overrides.sssPreset ? SSSPresets[overrides.sssPreset] : null;
 
     const material = new THREE.ShaderMaterial({
         uniforms: {
@@ -72,15 +73,15 @@ function createCrystalMaterial(glowColor, glowIntensity, overrides = {}, assetBa
             opacity: { value: 1.0 },
             // 0 = dark page, 1 = light page; kept live by the surface listener below (fix d).
             uSurface: { value: getSurface() === 'light' ? 1 : 0 },
-            frostiness: { value: overrides.frostiness ?? CRYSTAL_DEFAULT_UNIFORMS.frostiness },
+            frostiness: { value: overrides.frostiness ?? sssPreset?.frostiness ?? CRYSTAL_DEFAULT_UNIFORMS.frostiness },
             fresnelPower: {
                 value: overrides.fresnelPower ?? CRYSTAL_DEFAULT_UNIFORMS.fresnelPower,
             },
             fresnelIntensity: {
-                value: overrides.fresnelIntensity ?? CRYSTAL_DEFAULT_UNIFORMS.fresnelIntensity,
+                value: overrides.fresnelIntensity ?? sssPreset?.fresnelIntensity ?? CRYSTAL_DEFAULT_UNIFORMS.fresnelIntensity,
             },
             innerGlowStrength: {
-                value: overrides.innerGlowStrength ?? CRYSTAL_DEFAULT_UNIFORMS.innerGlowStrength,
+                value: overrides.innerGlowStrength ?? sssPreset?.innerGlowStrength ?? CRYSTAL_DEFAULT_UNIFORMS.innerGlowStrength,
             },
             surfaceRoughness: { value: CRYSTAL_DEFAULT_UNIFORMS.surfaceRoughness },
             // Enhanced lighting uniforms
@@ -104,7 +105,7 @@ function createCrystalMaterial(glowColor, glowIntensity, overrides = {}, assetBa
             noiseFrequency: { value: CRYSTAL_DEFAULT_UNIFORMS.noiseFrequency },
             // Internal caustics
             causticIntensity: {
-                value: overrides.causticIntensity ?? CRYSTAL_DEFAULT_UNIFORMS.causticIntensity,
+                value: overrides.causticIntensity ?? sssPreset?.causticIntensity ?? CRYSTAL_DEFAULT_UNIFORMS.causticIntensity,
             },
             causticScale: {
                 value: overrides.causticScale ?? CRYSTAL_DEFAULT_UNIFORMS.causticScale,

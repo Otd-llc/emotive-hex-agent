@@ -15,7 +15,7 @@ import { assertAssetBasePath } from './utils/assetBasePath.js';
 import { EventManager } from '../core/events/EventManager.js';
 import { listEmotions, hasEmotion } from '../core/emotions/index.js';
 import { getGesture, listGestures } from '../core/gestures/index.js';
-import { applySSSPreset as applySSS, SSSPresets } from './presets/SSSPresets.js';
+import { applySSSPreset as applySSS, SSSPresets, BASE_GEM, GEM_SHIFT_MIN_MS } from './presets/SSSPresets.js';
 import { ResizeObserverManager } from './managers/ResizeObserverManager.js';
 import { setSurface } from './materials/surface.js';
 import { FRAME_TIMING, ACCESSIBILITY } from '../core/config/defaults.js';
@@ -206,6 +206,8 @@ export class EmotiveMascot3D {
             debugShaders: this.config.debugShaders,
             preloadElements: this.config.preloadElements,
         });
+
+        this._wireCore();
 
         this._resizeObserver = new ResizeObserverManager(container, (width, height) => {
             this.core3D?.renderer?.resize(width, height);
@@ -522,6 +524,41 @@ export class EmotiveMascot3D {
     }
 
     /**
+     * @private Hook the core: the base gem is the current preset from mount on, and every
+     * material swap (morph) re-applies the current preset synchronously.
+     */
+    _wireCore() {
+        const core = this.core3D;
+        if (!core) return;
+        this._currentSSSPreset = BASE_GEM;
+        core._targetSSSValues = { ...SSSPresets[BASE_GEM] };
+        core._sssTransitionProgress = 1;
+        core.onMaterialSwap = () => {
+            if (this._currentSSSPreset) applySSS(this, this._currentSSSPreset);
+        };
+    }
+
+    /**
+     * Shift the gem colour to a preset over `ms` (never faster than GEM_SHIFT_MIN_MS, a flash
+     * safety rule), or back to the base gem with `preset = null`.
+     * @param {string|null} preset - SSSPresets name, or null for the base gem
+     * @param {number} [ms=GEM_SHIFT_MIN_MS]
+     * @returns {boolean} false for an unknown preset (nothing changes)
+     */
+    setGemColor(preset, ms = GEM_SHIFT_MIN_MS) {
+        const name = preset ?? BASE_GEM;
+        if (!SSSPresets[name] || !this.core3D) return false;
+        const durationMs = Math.max(GEM_SHIFT_MIN_MS, Number(ms) || 0);
+        this.core3D._sssTransitionDurationMs = durationMs;
+        return this.setSSSPreset(name, { durationMs });
+    }
+
+    /** @returns {string} the current (or target) gem preset */
+    getGemColor() {
+        return this._currentSSSPreset ?? BASE_GEM;
+    }
+
+    /**
      * Apply a gem (SSS) preset to the crystal material.
      * @param {string} presetName - quartz, emerald, ruby, sapphire, amethyst, topaz, citrine, diamond
      * @param {Object} [options]
@@ -529,22 +566,16 @@ export class EmotiveMascot3D {
      * @returns {boolean} true if applied
      */
     setSSSPreset(presetName, options = {}) {
-        this._currentSSSPreset = presetName;
-
-        if (this.core3D && !this._materialSwapCallbackSet) {
-            this._materialSwapCallbackSet = true;
-            // Re-apply synchronously at the swap (fix d): the new material's uniforms exist
-            // as soon as it is assigned; a timer let one frame render with default values.
-            this.core3D.onMaterialSwap = () => {
-                if (this._currentSSSPreset) applySSS(this, this._currentSSSPreset);
-            };
-        }
-
         const preset = SSSPresets[presetName];
-        if (!preset || !this.core3D?.customMaterial?.uniforms) return false;
+        if (!preset) return false;
+        // Re-applied synchronously at every material swap (fix d), see _wireCore().
+        if (this.core3D && !this.core3D.onMaterialSwap) this._wireCore();
+        this._currentSSSPreset = presetName;
+        if (!this.core3D?.customMaterial?.uniforms) return false;
         const u = this.core3D.customMaterial.uniforms;
 
         if (options.immediate || !this.core3D._targetSSSValues) {
+            this.core3D._sssTransitionDurationMs = null;
             const success = applySSS(this, presetName);
             if (success) {
                 this.core3D._targetSSSValues = { ...preset };
@@ -575,7 +606,9 @@ export class EmotiveMascot3D {
             sssScatterDistance: [...preset.sssScatterDistance],
         };
         this.core3D._sssTransitionProgress = 0;
-        this.eventManager.emit('sss:presetChanged', { preset: presetName, transitioning: true });
+        if (options.durationMs === undefined) this.core3D._sssTransitionDurationMs = null;
+        const durationMs = this.core3D._sssTransitionDurationMs || this.core3D.sssTransitionDuration || 500;
+        this.eventManager.emit('sss:presetChanged', { preset: presetName, transitioning: true, durationMs });
         return true;
     }
 

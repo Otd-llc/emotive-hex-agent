@@ -18,6 +18,21 @@
  * Each preset contains uniform values for the SSS shader
  */
 export const SSSPresets = {
+    // The hex agent's base gem. Starts from sapphire; the engine look round (P4) tunes it.
+    hexgem: {
+        sssStrength: 2.2,
+        sssAbsorption: [0.15, 0.4, 4.0],
+        sssScatterDistance: [0.1, 0.15, 0.5],
+        sssThicknessBias: 0.65,
+        sssThicknessScale: 1.8,
+        sssCurvatureScale: 3.0,
+        sssAmbient: 0.1,
+        frostiness: 0.18,
+        innerGlowStrength: 0.15,
+        fresnelIntensity: 1.3,
+        causticIntensity: 1.0,
+        emotionColorBleed: 0.35,
+    },
     quartz: {
         sssStrength: 0.8,
         sssAbsorption: [2.8, 2.9, 3.0],
@@ -131,6 +146,15 @@ export const SSSPresets = {
         emotionColorBleed: 0.0,
     },
 };
+
+/** The preset every crystal starts on (applied at mount, re-applied after a morph). */
+export const BASE_GEM = 'hexgem';
+
+/**
+ * Flash safety (WCAG 2.3.1 design rule): a gem colour shift never completes faster than this.
+ * setGemColor() clamps shorter durations up to it.
+ */
+export const GEM_SHIFT_MIN_MS = 500;
 
 /**
  * Apply an SSS preset to a mascot's custom material

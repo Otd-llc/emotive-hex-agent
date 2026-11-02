@@ -1784,7 +1784,8 @@ export class Core3DManager {
                 // Smooth SSS preset transition
                 // Lerp SSS uniforms from current to target over configurable duration
                 if (this._targetSSSValues && this._sssTransitionProgress < 1) {
-                    const sssTransitionDuration = this.sssTransitionDuration || 500; // ms
+                    const sssTransitionDuration =
+                        this._sssTransitionDurationMs || this.sssTransitionDuration || 500; // ms
                     this._sssTransitionProgress += deltaTime / sssTransitionDuration;
                     this._sssTransitionProgress = Math.min(this._sssTransitionProgress, 1);
 
