@@ -13,6 +13,7 @@
  */
 
 import * as THREE from 'three';
+import { PARTICLE_STAGE_EXP } from './particles/Particle3DRenderer.js';
 
 // Link-completion poll interval (three's compileAsync uses the same).
 const LINK_POLL_MS = 10;
@@ -21,6 +22,8 @@ const COMPILE_TIMEOUT_MS = 20000;
 
 /** Default camera distance: the crystal fills ~half the stage height. */
 export const DEFAULT_CAMERA_DISTANCE = 1.3;
+/** In-scene mode: the fixed square (drawing-buffer px) the 2D particle sim spawns in. */
+export const FOLLOW_SPAWN_STAGE = 400;
 
 export class ThreeRenderer {
     /**
@@ -119,6 +122,90 @@ export class ThreeRenderer {
         this._cameraDir = new THREE.Vector3();
         this._soulPosTemp = new THREE.Vector3();
         this._cachedSoulMesh = null;
+    }
+
+    /**
+     * IN-SCENE MODE (hex agent D20): draw the gem as if it stood in a HOST scene.
+     *
+     * The gem never leaves the origin of its own scene, so the soul, the particles and the
+     * electric arcs keep their local frame. Instead, every frame the camera becomes the host
+     * camera seen from the gem's anchor: position (host - anchor) / scale, the host quaternion,
+     * fov, aspect, zoom, and near/far divided by the scale. The gem then lands on the canvas
+     * exactly where a gem `scale` host units tall-per-engine-unit at `anchor.position` would.
+     * The canvas must cover the same rectangle as the host canvas.
+     *
+     * `anchor` is read every frame, so a host moves the gem by mutating it.
+     *
+     * @param {THREE.PerspectiveCamera|null} source - host camera; null returns to the self-framed camera
+     * @param {{ position?: number[], scale?: number }} [anchor] - host-world position, host units per engine unit
+     */
+    syncCamera(source, anchor = {}) {
+        if (!source) {
+            if (!this._follow) return;
+            this._follow = null;
+            const fov = this.options.fov !== undefined ? this.options.fov : 45;
+            this.camera.fov = fov;
+            this.camera.zoom = 1;
+            this.camera.near = 0.1;
+            this.camera.far = 100;
+            this.camera.aspect = this._drawingBufferSize.x / Math.max(1, this._drawingBufferSize.y);
+            this.camera.position.set(0, 0, this.cameraDistance);
+            this.camera.quaternion.identity();
+            this.camera.lookAt(0, 0, 0);
+            this.camera.updateProjectionMatrix();
+            return;
+        }
+        this._follow = { source, anchor };
+        this._applyFollow();
+    }
+
+    /** True while the camera follows a host camera (syncCamera). */
+    isFollowing() {
+        return Boolean(this._follow);
+    }
+
+    /** @private copy the host camera into the gem's frame (once per frame). */
+    _applyFollow() {
+        const f = this._follow;
+        if (!f) return;
+        const src = f.source;
+        const a = f.anchor || {};
+        const p = a.position || [0, 0, 0];
+        const s = a.scale > 0 ? a.scale : 1;
+        const cam = this.camera;
+        if (src.updateMatrixWorld) src.updateMatrixWorld();
+        // World pose, so a camera parented under a rig still works.
+        src.getWorldPosition ? src.getWorldPosition(cam.position) : cam.position.copy(src.position);
+        cam.position.set((cam.position.x - p[0]) / s, (cam.position.y - p[1]) / s, (cam.position.z - p[2]) / s);
+        src.getWorldQuaternion ? src.getWorldQuaternion(cam.quaternion) : cam.quaternion.copy(src.quaternion);
+        cam.fov = src.fov;
+        cam.aspect = src.aspect;
+        cam.zoom = src.zoom ?? 1;
+        cam.near = Math.max(1e-4, src.near / s);
+        cam.far = Math.max(cam.near * 2, src.far / s);
+        cam.updateProjectionMatrix();
+        cam.updateMatrixWorld(true);
+    }
+
+    /**
+     * The stage the particle system should think it is drawing on, while following a host camera.
+     * Sparks are tuned for the self-framed stage (gem at 1.3, about half the stage tall); in a
+     * full-viewport canvas the gem is a small part of the frame, so the 2D spawn space stays a
+     * fixed square and the sprite size follows the stage the gem WOULD fill at its on-screen
+     * size. Null when self-framed (the real canvas is the stage).
+     * @returns {{width:number,height:number,pointHeight:number}|null}
+     */
+    particleStage() {
+        if (!this._follow) return null;
+        const d = Math.max(1e-3, this.camera.position.length());
+        const fov0 = this.options.fov !== undefined ? this.options.fov : 45;
+        const k = Math.tan((fov0 * Math.PI) / 360) / Math.tan((this.camera.fov * Math.PI) / 360);
+        // Drawing-buffer px of the stage the gem would fill self-framed at its current size.
+        const stage = Math.max(1, this._drawingBufferSize.y * (DEFAULT_CAMERA_DISTANCE / d) * k * (this.camera.zoom || 1));
+        // The sprite shader divides by distance (75 / len) and raises the stage to STAGE_EXP;
+        // this height puts the sprite at the size it has on that self-framed stage.
+        const pointHeight = stage * Math.pow(d / DEFAULT_CAMERA_DISTANCE, 1 / PARTICLE_STAGE_EXP);
+        return { width: FOLLOW_SPAWN_STAGE, height: FOLLOW_SPAWN_STAGE, pointHeight };
     }
 
     /** Forget the cached soul mesh (call when the soul is disposed or recreated). */
@@ -348,6 +435,9 @@ export class ThreeRenderer {
             hasSoul = false,
             hasParticles = true,
         } = params;
+
+        // In-scene mode: the host camera, read now, so the gem tracks an orbit frame by frame.
+        if (this._follow) this._applyFollow();
 
         this._updateCoreMesh(
             position,

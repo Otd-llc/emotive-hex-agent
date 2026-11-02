@@ -1735,7 +1735,9 @@ export class Core3DManager {
                 this.animationManager.getActiveAnimations(), // Active gestures
                 this.animationManager.getTime(), // Current animation time
                 { x: this.position[0], y: this.position[1], z: this.position[2] }, // Core position
-                { width: this.canvas.width, height: this.canvas.height }, // Canvas size
+                // In-scene mode (syncCamera): a fixed spawn square and the sprite stage the gem
+                // would fill at its on-screen size; self-framed, the canvas is the stage.
+                this.renderer.particleStage?.() ?? { width: this.canvas.width, height: this.canvas.height },
                 // Rotation state for orbital physics
                 {
                     euler: this.baseEuler,

@@ -18,6 +18,7 @@ import { getGesture, listGestures } from '../core/gestures/index.js';
 import { applySSSPreset as applySSS, SSSPresets, BASE_GEM, GEM_SHIFT_MIN_MS } from './presets/SSSPresets.js';
 import { LOOKS, BASE_LOOK, writeLook } from './presets/looks.js';
 import { ResizeObserverManager } from './managers/ResizeObserverManager.js';
+import { FOLLOW_SPAWN_STAGE } from './ThreeRenderer.js';
 import { setSurface } from './materials/surface.js';
 import { FRAME_TIMING, ACCESSIBILITY } from '../core/config/defaults.js';
 import { THREE_GEOMETRIES } from './geometries/ThreeGeometries.js';
@@ -136,6 +137,8 @@ export class EmotiveMascot3D {
     _isActive() {
         const c = this.core3D;
         if (!c) return false;
+        // In-scene: the host camera can move on any frame, so the gem keeps its frame rate.
+        if (c.renderer?.isFollowing?.()) return true;
         return Boolean(c.animationManager?.hasActiveAnimations?.() || c.isMorphing?.());
     }
 
@@ -540,6 +543,40 @@ export class EmotiveMascot3D {
     setGlow(level, ms = GLOW_MIN_MS) {
         if (!this.core3D || !Number.isFinite(level)) return;
         this.core3D.setGlow(level, Math.max(GLOW_MIN_MS, Number(ms) || 0));
+    }
+
+    /**
+     * IN-SCENE MODE (D20): draw the gem as if it stood in the host's 3D scene. Every frame the
+     * gem's camera copies `camera` (position, quaternion, fov, aspect, zoom, near/far) relative
+     * to `anchor`, so the gem appears at `anchor.position` (host world units), `anchor.scale`
+     * host units per engine unit (the self-framed gem is about 0.55 units tall). The anchor
+     * object is read every frame: move the gem by mutating it. The canvas must cover the host
+     * canvas's rectangle. While following, the loop draws at activeFPS so the gem never lags an
+     * orbit. `syncCamera(null)` returns to the self-framed camera.
+     * @param {THREE.PerspectiveCamera|null} camera
+     * @param {{ position?: number[], scale?: number }} [anchor]
+     * @returns {EmotiveMascot3D}
+     */
+    syncCamera(camera, anchor = {}) {
+        const r = this.core3D?.renderer;
+        if (!r) return this;
+        const ps = this.core3D.particleOrchestrator?.particleSystem;
+        if (camera) {
+            if (ps && !this._spawnStage) {
+                this._spawnStage = [ps.canvasWidth, ps.canvasHeight];
+                ps.canvasWidth = ps.canvasHeight = FOLLOW_SPAWN_STAGE;
+            }
+        } else if (ps && this._spawnStage) {
+            [ps.canvasWidth, ps.canvasHeight] = this._spawnStage;
+            this._spawnStage = null;
+        }
+        r.syncCamera(camera ?? null, anchor);
+        return this;
+    }
+
+    /** @returns {boolean} true while the gem follows a host camera (syncCamera). */
+    isInScene() {
+        return Boolean(this.core3D?.renderer?.isFollowing?.());
     }
 
     /**

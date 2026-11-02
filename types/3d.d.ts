@@ -528,6 +528,17 @@ export class EmotiveMascot3D {
 
     /** Light pages: draw electric arcs as ink and drop the glow halo. */
     setSurface(mode: 'dark' | 'light'): void;
+    /**
+     * In-scene mode: follow a host camera so the gem stands at `anchor.position` (host world
+     * units), `anchor.scale` host units per engine unit. The anchor is read every frame.
+     * `null` returns to the self-framed camera.
+     */
+    syncCamera(
+        camera: { position: { x: number; y: number; z: number }; quaternion: unknown; fov: number; aspect: number; near: number; far: number; zoom?: number } | null,
+        anchor?: { position?: [number, number, number]; scale?: number }
+    ): EmotiveMascot3D;
+    /** True while the gem follows a host camera. */
+    isInScene(): boolean;
     /** Enable or disable the core glow (crystal soul) effect */
     setCoreGlowEnabled(enabled: boolean): EmotiveMascot3D;
 

@@ -290,7 +290,7 @@ export class Particle3DRenderer {
 
         // Update viewport height for screen-size compensation
         if (canvasSize && canvasSize.height) {
-            this.material.uniforms.viewportHeight.value = canvasSize.height;
+            this.material.uniforms.viewportHeight.value = canvasSize.pointHeight ?? canvasSize.height;
         }
 
         // Update pixel ratio (read from renderer which has the capped value)
