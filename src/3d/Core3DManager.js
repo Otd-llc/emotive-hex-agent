@@ -37,8 +37,6 @@ import { AnimationManager } from './managers/AnimationManager.js';
 import { EffectManager } from './managers/EffectManager.js';
 import { BehaviorController } from './managers/BehaviorController.js';
 import { BreathingPhaseManager } from './managers/BreathingPhaseManager.js';
-import { ShatterSystem } from './effects/shatter/ShatterSystem.js';
-import { ObjectSpaceCrackManager } from './effects/ObjectSpaceCrackManager.js';
 import { createElectricMaterial } from './materials/overlays/ElectricMaterial.js';
 import { createWaterMaterial } from './materials/overlays/WaterMaterial.js';
 import { createFireMaterial } from './materials/overlays/FireMaterial.js';
@@ -93,7 +91,6 @@ export class Core3DManager {
      * @param {number} [options.maxZoom] - Maximum zoom distance
      * @param {string} [options.materialVariant] - Material variant override
      * @param {string} [options.assetBasePath='/assets'] - Base path for loading assets (textures, models)
-     * @param {boolean} [options.enableShatter=true] - Enable shatter/shard system
      * @param {string[]} [options.preloadElements] - Element types to preload immediately (e.g., ['fire', 'ice'])
      * @param {boolean} [options.backgroundPrewarm=true] - Auto-preload remaining elements after 2s idle
      */
@@ -123,8 +120,6 @@ export class Core3DManager {
         // Empty string triggers auto-detection in ThreeRenderer
         this.assetBasePath = options.assetBasePath !== undefined ? options.assetBasePath : '';
 
-        // Shatter system toggle (can be disabled for isolated testing)
-        this.enableShatter = options.enableShatter !== false;
 
         // Element preloading options
         // preloadElements: specific elements to preload immediately (e.g., ['fire', 'ice'])
@@ -194,12 +189,6 @@ export class Core3DManager {
         // Capture geometryType NOW to ensure correct type even if morph happens before texture loads
         const geometryTypeForCallback = this.geometryType;
         const onTextureReady = _material => {
-            if (this.shatterSystem && this.renderer?.coreMesh) {
-                this.shatterSystem.precomputeShards(
-                    this.renderer.coreMesh,
-                    geometryTypeForCallback
-                );
-            }
         };
 
         const materialResult = createCustomMaterial(this.geometryType, this.geometryConfig, {
@@ -402,61 +391,6 @@ export class Core3DManager {
             sunRadius,
         });
 
-        // ═══════════════════════════════════════════════════════════════════════════
-        // SHATTER SYSTEM INITIALIZATION
-        // ═══════════════════════════════════════════════════════════════════════════
-        // Runtime geometry fracturing for dramatic storytelling effects
-        // Can be disabled via enableShatter: false for isolated testing
-        this.shatterSystem = null;
-        this._pendingShatter = null;
-
-        if (this.enableShatter) {
-            this.shatterSystem = new ShatterSystem({
-                scene: this.renderer.scene,
-                maxShards: 50,
-                shardLifetime: 2000,
-                enableReassembly: true,
-                autoRestore: true,
-            });
-
-            // Wire up shatter callbacks for visual effects
-            this.shatterSystem.onShatterStart = () => {
-                // The shard materials already have emissive glow that creates a "particle-like" effect
-                // Phase 3 could add dedicated particle burst via orchestrator.triggerBurst()
-            };
-
-            // Restore soul visibility after shatter completes (when shards finish animating)
-            this.shatterSystem.onShatterComplete = () => {
-                // Restore crystal soul to its normal visibility state based on coreGlowEnabled
-                if (this.crystalSoul) {
-                    this.crystalSoul.setVisible(this.coreGlowEnabled);
-                }
-            };
-
-            // Restore soul visibility after reassembly completes
-            this.shatterSystem.onReassemblyComplete = () => {
-                // Restore crystal soul to its normal visibility state based on coreGlowEnabled
-                if (this.crystalSoul) {
-                    this.crystalSoul.setVisible(this.coreGlowEnabled);
-                }
-            };
-
-            // ═══════════════════════════════════════════════════════════════════════════
-            // PRECOMPUTE SHARDS FOR INITIAL GEOMETRY
-            // Generate shard geometries and extract material at startup to eliminate
-            // first-shatter lag. This is repeated on morphTo() for new geometries.
-            // ═══════════════════════════════════════════════════════════════════════════
-            if (this.renderer?.coreMesh) {
-                this.shatterSystem.precomputeShards(this.renderer.coreMesh, this.geometryType);
-            }
-        }
-
-        // ═══════════════════════════════════════════════════════════════════════════
-        // OBJECT-SPACE CRACK MANAGER
-        // ═══════════════════════════════════════════════════════════════════════════
-        // Manages persistent crack damage that rotates with the mesh.
-        // Unlike screen-space CrackLayer, impacts are stored in mesh-local coordinates.
-        this.objectSpaceCrackManager = new ObjectSpaceCrackManager();
 
         // ═══════════════════════════════════════════════════════════════════════════
         // ELEMENT SPAWNER (GPU-Instanced)
@@ -739,27 +673,7 @@ export class Core3DManager {
         });
     }
 
-    /**
-     * Trigger reassembly of frozen shards (for shatterFreeze gesture)
-     * Only works when shatter is in FROZEN state (after shatterFreeze completes).
-     * @param {number} [duration=1500] - Animation duration in ms
-     * @returns {boolean} True if reassembly started
-     */
-    triggerReassembly(duration = 1500) {
-        if (!this.shatterSystem) {
-            console.warn('[Core3DManager] triggerReassembly: ShatterSystem not initialized');
-            return false;
-        }
-        return this.shatterSystem.triggerReassembly(duration);
-    }
 
-    /**
-     * Check if shatter is currently in frozen state (awaiting manual reassembly)
-     * @returns {boolean}
-     */
-    isShatterFrozen() {
-        return this.shatterSystem?.isFrozen() || false;
-    }
 
 
 
@@ -1067,13 +981,6 @@ export class Core3DManager {
             return;
         }
 
-        // ═══════════════════════════════════════════════════════════════════
-        // CLEAR SHATTER STATE - If shards are out (frozen/shattering), clear them
-        // Morph should transition cleanly to new geometry without lingering shards
-        // ═══════════════════════════════════════════════════════════════════
-        if (this.shatterSystem && !this.shatterSystem.isIdle()) {
-            this.shatterSystem.forceStop();
-        }
 
         // Start smooth morph transition (handles interruptions internally)
         const started = this.geometryMorpher.startMorph(this.geometryType, shapeName, duration);
@@ -1247,12 +1154,6 @@ export class Core3DManager {
             // IMPORTANT: Capture geometryType NOW because _targetGeometryType gets cleared after morph
             const geometryTypeForCallback = this._targetGeometryType;
             const onTextureReady = _material => {
-                if (this.shatterSystem && this.renderer?.coreMesh) {
-                    this.shatterSystem.precomputeShards(
-                        this.renderer.coreMesh,
-                        geometryTypeForCallback
-                    );
-                }
             };
 
             const materialResult = createCustomMaterial(
@@ -1312,16 +1213,6 @@ export class Core3DManager {
                 sunRadius,
             });
 
-            // ═══════════════════════════════════════════════════════════════════
-            // PRECOMPUTE SHARDS - Generate shard geometries and extract material
-            // This eliminates first-shatter lag by caching everything upfront
-            // ═══════════════════════════════════════════════════════════════════
-            if (this.shatterSystem && this.renderer?.coreMesh) {
-                this.shatterSystem.precomputeShards(
-                    this.renderer.coreMesh,
-                    this._targetGeometryType
-                );
-            }
 
             // Create or dispose crystal inner core (still uses createCrystalInnerCore for now)
             if (
@@ -2647,116 +2538,6 @@ export class Core3DManager {
             }
         }
 
-        // ═══════════════════════════════════════════════════════════════════════════
-        // OBJECT-SPACE CRACKS - Persistent damage that rotates with mesh
-        // ═══════════════════════════════════════════════════════════════════════════
-        // Cracks accumulate from multiple impacts and persist until healed.
-        // Unlike screen-space CrackLayer, impacts are stored in MESH-LOCAL coordinates
-        // so cracks rotate with the model.
-        //
-        // Transform: Camera-relative (from gesture) → World → Mesh-local
-
-        // Handle new crack impacts
-        if (
-            blended.crackTriggers &&
-            blended.crackTriggers.length > 0 &&
-            this.objectSpaceCrackManager
-        ) {
-            const cam = this.renderer?.camera;
-            const mesh = this.renderer?.coreMesh;
-
-            if (cam && mesh) {
-                // Ensure matrices are up to date
-                cam.updateMatrixWorld();
-                mesh.updateMatrixWorld();
-
-                // Get camera basis vectors
-                if (!this._crackCamRight) {
-                    this._crackCamRight = new THREE.Vector3();
-                    this._crackCamUp = new THREE.Vector3();
-                    this._crackCamForward = new THREE.Vector3();
-                    this._crackWorldPos = new THREE.Vector3();
-                    this._crackWorldDir = new THREE.Vector3();
-                    this._crackInvQuat = new THREE.Quaternion();
-                }
-
-                cam.getWorldDirection(this._crackCamForward);
-                this._crackCamRight.crossVectors(this._crackCamForward, cam.up).normalize();
-                this._crackCamUp
-                    .crossVectors(this._crackCamRight, this._crackCamForward)
-                    .normalize();
-
-                // Get inverse mesh rotation for world→local transform
-                mesh.getWorldQuaternion(this._crackInvQuat);
-                this._crackInvQuat.invert();
-
-                for (const trigger of blended.crackTriggers) {
-                    const screenOffset = trigger.screenOffset || [0, 0];
-                    const screenDir = trigger.screenDirection || [0, 0];
-
-                    // Impact point should be ON the camera-facing surface of the mesh.
-                    // We calculate a point on a sphere of radius ~0.35 (mesh surface)
-                    // offset from center by the screen offset values.
-                    //
-                    // screenOffset: [0,0] = center of mesh facing camera
-                    //               [0.1, 0] = slightly right
-                    //               [0, 0.1] = slightly up
-
-                    // Start with direction toward camera (this is the front surface)
-                    const meshRadius = 0.35; // Approximate mesh surface radius
-
-                    // Offset from center: tilt the surface point based on screenOffset
-                    // Small offsets (0.1) = ~5-10 degree tilt from center
-                    const tiltScale = 1.0; // How much screenOffset affects position
-                    this._crackWorldPos
-                        .set(0, 0, 0)
-                        .addScaledVector(this._crackCamRight, screenOffset[0] * tiltScale)
-                        .addScaledVector(this._crackCamUp, screenOffset[1] * tiltScale)
-                        .addScaledVector(this._crackCamForward, -1.0); // Toward camera
-
-                    // Normalize to get direction, then scale to mesh surface
-                    this._crackWorldPos.normalize().multiplyScalar(meshRadius);
-
-                    // Transform to mesh-local space (rotation only - mesh is at origin)
-                    this._crackWorldPos.applyQuaternion(this._crackInvQuat);
-
-                    // Convert screen direction to world, then to mesh-local
-                    // Direction tells us which way cracks spread from the impact
-                    this._crackWorldDir.set(0, 0, 0);
-                    if (Math.abs(screenDir[0]) > 0.01 || Math.abs(screenDir[1]) > 0.01) {
-                        this._crackWorldDir
-                            .addScaledVector(this._crackCamRight, screenDir[0])
-                            .addScaledVector(this._crackCamUp, screenDir[1])
-                            .normalize()
-                            .applyQuaternion(this._crackInvQuat);
-                    }
-                    // Note: zero direction = radial cracks spreading in all directions
-
-                    // Add to manager in mesh-local space
-                    // addImpact() clones internally, no need to clone here
-                    this.objectSpaceCrackManager.addImpact({
-                        position: this._crackWorldPos,
-                        direction: this._crackWorldDir,
-                        propagation: trigger.propagation || 0.8,
-                        amount: trigger.amount || 1.0,
-                    });
-                }
-            }
-        }
-
-        // Handle heal trigger
-        if (blended.crackHealTrigger && this.objectSpaceCrackManager) {
-            this.objectSpaceCrackManager.startHealing(blended.crackHealDuration || 1500);
-        }
-
-        // Pass through glow settings
-        if (
-            blended.crack &&
-            blended.crack.glowStrength !== undefined &&
-            this.objectSpaceCrackManager
-        ) {
-            this.objectSpaceCrackManager.glowStrength = blended.crack.glowStrength;
-        }
 
         // Store freeze values for next frame's behavior controller update
         // (Behavior controller runs before blending, so we use previous frame's freeze)
@@ -2853,176 +2634,6 @@ export class Core3DManager {
             this._deformation = blended.deformation || null;
         }
 
-        // ═══════════════════════════════════════════════════════════════════════════
-        // SHATTER CHANNEL HANDLING - Geometry fragmentation
-        // ═══════════════════════════════════════════════════════════════════════════
-        // Transform impact point from camera-relative to mesh-local space (same as deformation)
-        // Then trigger the shatter system (if enabled)
-
-        // Skip all shatter handling if shatter system is disabled
-        if (this.enableShatter && this.shatterSystem) {
-            // Reset the flag when shards are no longer frozen
-            if (!this.shatterSystem.isFrozen()) {
-                this._frozenShardsMovedThisGesture = false;
-            }
-
-            if (blended.shatter && blended.shatter.enabled) {
-                const s = blended.shatter;
-
-                // ═══════════════════════════════════════════════════════════════
-                // DUAL-MODE HANDLING - Apply behavior to existing frozen shards
-                // If shards are frozen and this is a dual-mode gesture, apply behavior directly
-                // ═══════════════════════════════════════════════════════════════
-                if (s.isDualMode && this.shatterSystem.isFrozen()) {
-                    // Apply dual-mode behavior to existing frozen shards
-                    this.shatterSystem.triggerDualMode(s.dualModeType, s.dualModeConfig || {});
-                }
-                // ═══════════════════════════════════════════════════════════════
-                // SHATTER REFORM ON FROZEN SHARDS - Trigger reassembly
-                // ═══════════════════════════════════════════════════════════════
-                else if (s.variant === 'reform' && this.shatterSystem.isFrozen()) {
-                    // Reform on frozen shards = reassemble them
-                    this.shatterSystem.triggerReassembly(s.reassembleDuration || 1500);
-                }
-                // ═══════════════════════════════════════════════════════════════
-                // ALL OTHER SHATTER GESTURES WHEN FROZEN - Move shards in impact direction
-                // Shatter/punch/crumble/etc on frozen shards = scatter them
-                // ═══════════════════════════════════════════════════════════════
-                else if (
-                    !s.isDualMode &&
-                    this.shatterSystem.isFrozen() &&
-                    !this._frozenShardsMovedThisGesture
-                ) {
-                    // Move frozen shards in the gesture's impact direction
-                    const moveDir = s.impactDirection || [0, 0, -1];
-                    // Use different force based on gesture type
-                    const force = s.variant?.startsWith('punch')
-                        ? 3.5
-                        : s.variant === 'explosive'
-                          ? 4.0
-                          : s.variant === 'crumble'
-                            ? 1.5
-                            : 2.5;
-                    this.shatterSystem.moveFrozenShards(moveDir, force);
-                    this._frozenShardsMovedThisGesture = true;
-                }
-                // ═══════════════════════════════════════════════════════════════
-                // NORMAL SHATTER - From IDLE state
-                // ═══════════════════════════════════════════════════════════════
-                else if (this.shatterSystem.isIdle()) {
-                    const ip = s.impactPoint || [0, 0, 0.4];
-
-                    // Transform impact point from camera-relative to world space
-                    let impactPoint = new THREE.Vector3(ip[0], ip[1], ip[2]);
-
-                    if (this.renderer?.camera && this.renderer?.coreMesh) {
-                        const cam = this.renderer.camera;
-                        const mesh = this.renderer.coreMesh;
-
-                        // Get camera basis vectors
-                        const camRight = new THREE.Vector3();
-                        const camUp = new THREE.Vector3();
-                        const camForward = new THREE.Vector3();
-                        cam.getWorldDirection(camForward);
-                        camRight.crossVectors(cam.up, camForward).normalize();
-                        camUp.crossVectors(camForward, camRight).normalize();
-
-                        // Transform to world space
-                        impactPoint = new THREE.Vector3()
-                            .addScaledVector(camRight, ip[0])
-                            .addScaledVector(camUp, ip[1])
-                            .addScaledVector(camForward, -ip[2]); // Z toward camera = -forward
-
-                        // Add mesh position
-                        impactPoint.add(mesh.position);
-
-                        // Set targets for the shatter system
-                        // CrystalSoul exposes inner mesh via .mesh property
-                        const soulMesh = this.crystalSoul?.mesh || null;
-                        this.shatterSystem.setTargets(mesh, soulMesh);
-                    }
-
-                    // Transform impact direction the same way as impact point
-                    const id = s.impactDirection || [0, 0, -1];
-                    let impactDirection = new THREE.Vector3(id[0], id[1], id[2]);
-
-                    if (this.renderer?.camera) {
-                        const cam = this.renderer.camera;
-
-                        // Get camera basis vectors
-                        const camRight = new THREE.Vector3();
-                        const camUp = new THREE.Vector3();
-                        const camForward = new THREE.Vector3();
-                        cam.getWorldDirection(camForward);
-                        camRight.crossVectors(cam.up, camForward).normalize();
-                        camUp.crossVectors(camForward, camRight).normalize();
-
-                        // Transform direction to world space
-                        impactDirection = new THREE.Vector3()
-                            .addScaledVector(camRight, id[0])
-                            .addScaledVector(camUp, id[1])
-                            .addScaledVector(camForward, -id[2])
-                            .normalize();
-                    }
-
-                    // Trigger shatter
-                    this.shatterSystem.shatter(this.renderer.coreMesh, {
-                        impactPoint,
-                        impactDirection,
-                        intensity: s.intensity || 1.0,
-                        revealInner: s.revealSoul !== false, // Controlled per-variant
-                        // Suspend mode: explode, freeze mid-air, then reassemble
-                        isSuspendMode: s.isSuspendMode || false,
-                        suspendAt: s.suspendAt || 0.25,
-                        suspendDuration: s.suspendDuration || 0.35,
-                        // Freeze mode: explode, freeze indefinitely (manual reassembly via API)
-                        isFreezeMode: s.isFreezeMode || false,
-                        // Dual-mode: behavior to apply after shatter completes initial phase
-                        isDualMode: s.isDualMode || false,
-                        dualModeType: s.dualModeType,
-                        dualModeConfig: s.dualModeConfig || {},
-                        // Physics overrides (for crumble, etc.)
-                        gravity: s.gravity, // undefined = use default
-                        explosionForce: s.explosionForce,
-                        rotationForce: s.rotationForce,
-                        // Gesture duration for suspend timing calculation
-                        gestureDuration: s.gestureDuration,
-                        // ═══════════════════════════════════════════════════════════════
-                        // ELEMENTAL MATERIAL SYSTEM
-                        // Replaces shard material with elemental material (fire, water, etc.)
-                        // ═══════════════════════════════════════════════════════════════
-                        elemental: s.elemental || null,
-                        elementalParam: s.elementalParam ?? 0.5,
-                        overlay: s.overlay || null,
-                        overlayParam: s.overlayParam ?? 0.5,
-                    });
-
-                    // Clear all cracks when shattering (geometry is destroyed)
-                    if (this.objectSpaceCrackManager) {
-                        this.objectSpaceCrackManager.clearAll();
-                    }
-                    if (this.renderer.crackLayer) {
-                        this.renderer.crackLayer.clearAll();
-                    }
-                }
-            }
-
-            // Handle reassembly trigger from gesture
-            if (
-                blended.shatter &&
-                blended.shatter.reassemble &&
-                this.shatterSystem.isShattering()
-            ) {
-                this.shatterSystem.reassemble({
-                    duration: blended.shatter.reassembleDuration || 1000,
-                });
-            }
-
-            // Update shatter system only when actively shattering or reassembling
-            if (this.shatterSystem.isShattering() || this.shatterSystem.isReassembling()) {
-                this.shatterSystem.update(deltaTime);
-            }
-        } // end if (this.enableShatter && this.shatterSystem)
 
         // Update element spawner (ice crystals, rocks, etc.)
         if (this.elementSpawner) {
@@ -3157,21 +2768,6 @@ export class Core3DManager {
             this.renderer.updateGlowLayer(this.glowBoost, this.glowColor, worldPosition, deltaTime);
         }
 
-        // Update object-space crack manager (persistent damage in material)
-        // This is rendered IN the material shader and rotates with the mesh
-        if (this.objectSpaceCrackManager) {
-            this.objectSpaceCrackManager.update(deltaTime);
-            // Apply crack uniforms to material if it's a crystal-type shader
-            if (this.customMaterial?.uniforms) {
-                this.objectSpaceCrackManager.applyToMaterial(this.customMaterial);
-            }
-        }
-
-        // Legacy: Update screen-space crack layer (kept for backward compatibility)
-        // This is a universal post-process effect but cracks don't rotate with mesh
-        if (this.renderer.crackLayer && this.renderer.crackLayer.isActive()) {
-            this.renderer.updateCrackLayer(null, deltaTime);
-        }
 
 
         // Moon: glowIntensity affects subtle emotion-colored glow (very subtle effect, * 0.02 in shader)
@@ -3326,8 +2922,7 @@ export class Core3DManager {
             // Update inner core color and animation (also use cached normalized color)
             // Only update if core glow is enabled AND shatter system isn't managing the soul
             // During shatter/frozen/reassembly, ShatterSystem controls the soul's scale and uniforms
-            const shatterManagingSoul = this.shatterSystem && !this.shatterSystem.isIdle();
-            if (this.coreGlowEnabled && !shatterManagingSoul) {
+            if (this.coreGlowEnabled) {
                 const normalizedCoreColor = this._normalizedGlowColor || [1, 1, 1];
                 this.updateCrystalInnerCore(normalizedCoreColor, deltaTime);
             }
@@ -3825,11 +3420,6 @@ export class Core3DManager {
             this.particleOrchestrator = null;
         }
 
-        // Clean up shatter system
-        if (this.shatterSystem) {
-            this.shatterSystem.dispose();
-            this.shatterSystem = null;
-        }
 
         // Clean up smoke particle system
         if (this._smokeParticleSystem) {
@@ -3837,11 +3427,6 @@ export class Core3DManager {
             this._smokeParticleSystem = null;
         }
 
-        // Clean up object-space crack manager
-        if (this.objectSpaceCrackManager) {
-            this.objectSpaceCrackManager.dispose();
-            this.objectSpaceCrackManager = null;
-        }
 
         // Clean up element spawner
         if (this.elementSpawner) {
