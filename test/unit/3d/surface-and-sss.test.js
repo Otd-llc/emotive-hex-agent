@@ -11,7 +11,7 @@ const { SSSPresets } = await import('../../../src/3d/presets/SSSPresets.js');
 const { EmotiveMascot3D } = await import('../../../src/3d/index.js');
 
 const crystal = () =>
-    createCustomMaterial('crystal', THREE_GEOMETRIES.crystal, { assetBasePath: '/x' }).material;
+    createCustomMaterial('hexgem', THREE_GEOMETRIES.hexgem, { assetBasePath: '/x' }).material;
 
 afterEach(() => setSurface('dark'));
 

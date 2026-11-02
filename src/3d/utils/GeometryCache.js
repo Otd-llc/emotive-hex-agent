@@ -6,7 +6,7 @@
  * reused on subsequent morphs.
  */
 
-import { THREE_GEOMETRIES } from '../geometries/ThreeGeometries.js';
+import { THREE_GEOMETRIES, CRYSTAL_SHAPES } from '../geometries/ThreeGeometries.js';
 import { createCustomMaterial, disposeCustomMaterial } from './MaterialFactory.js';
 
 /**
@@ -17,7 +17,7 @@ const cache = new Map();
 
 /**
  * Preload assets for a geometry type
- * @param {string} geometryType - The geometry type to preload (e.g., 'crystal', 'moon', 'sun')
+ * @param {string} geometryType - The geometry type to preload (e.g. 'hexgem')
  * @param {Object} options - Material creation options
  * @returns {Promise<Object>} - Cached assets { geometry, material }
  */
@@ -128,7 +128,7 @@ export function updateMaterialOptions(geometryType, options) {
  * @returns {Promise<void>}
  */
 export async function preloadAll(options = {}) {
-    const types = ['crystal', 'rough', 'heart', 'moon', 'sun'];
+    const types = CRYSTAL_SHAPES;
 
     await Promise.all(types.map(type => preload(type, options)));
 }

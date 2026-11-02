@@ -7,7 +7,10 @@
  */
 
 import * as THREE from 'three';
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { loadCrystalGeometry, assetUrl } from '../geometries/ThreeGeometries.js';
+
+/** The soul inclusion (Blender output, GLB) under assetBasePath. */
+export const INCLUSION_FILE = 'inclusion-hex.glb';
 import { blendModesGLSL } from '../shaders/utils/blendModes.js';
 import {
     SOUL_BEHAVIOR_UNIFORMS_GLSL,
@@ -234,64 +237,30 @@ export class CrystalSoul {
      * @returns {Promise<THREE.BufferGeometry>}
      * @private
      */
-    static _loadInclusionGeometry(assetBasePath = '/assets') {
-        // Return cached geometry if available
-        if (inclusionGeometryCache) {
-            return Promise.resolve(inclusionGeometryCache.clone());
-        }
+    static _loadInclusionGeometry(assetBasePath) {
+        if (inclusionGeometryCache) return Promise.resolve(inclusionGeometryCache.clone());
+        if (inclusionGeometryLoading) return inclusionGeometryLoading.then(geo => geo?.clone() ?? null);
 
-        // Return existing loading promise if in progress
-        if (inclusionGeometryLoading) {
-            return inclusionGeometryLoading.then(geo => geo.clone());
-        }
-
-        // Start loading
-        inclusionGeometryLoading = new Promise(resolve => {
-            const loader = new OBJLoader();
-            loader.load(
-                `${assetBasePath}/models/Crystal/inclusion.obj`,
-                obj => {
-                    let geometry = null;
-                    obj.traverse(child => {
-                        if (child.isMesh && child.geometry) {
-                            ({ geometry } = child);
-                        }
-                    });
-
-                    if (geometry) {
-                        // Center the geometry
-                        geometry.computeBoundingBox();
-                        const center = new THREE.Vector3();
-                        geometry.boundingBox.getCenter(center);
-                        geometry.translate(-center.x, -center.y, -center.z);
-
-                        // Rotate 90 degrees around X-axis to make it vertical
-                        geometry.rotateX(Math.PI / 2);
-
-                        // Scale to unit size (will be scaled by baseScale)
-                        geometry.computeBoundingBox();
-                        const size = new THREE.Vector3();
-                        geometry.boundingBox.getSize(size);
-                        const maxDim = Math.max(size.x, size.y, size.z);
-                        const scale = 0.3 / maxDim; // Target ~0.3 unit radius
-                        geometry.scale(scale, scale, scale);
-
-                        geometry.computeVertexNormals();
-                        inclusionGeometryCache = geometry;
-                        resolve(geometry.clone());
-                    } else {
-                        console.warn('[🔮 SOUL] No mesh in inclusion.obj, using fallback');
-                        resolve(null);
-                    }
-                },
-                undefined,
-                err => {
-                    console.warn('[🔮 SOUL] Failed to load inclusion.obj:', err);
-                    resolve(null);
-                }
-            );
-        });
-
+        inclusionGeometryLoading = loadCrystalGeometry(assetUrl(assetBasePath, INCLUSION_FILE), { normalize: false })
+            .then(geometry => {
+                // Centre, stand the long (Z) axis up along Y, scale to ~0.3 units.
+                geometry.computeBoundingBox();
+                const center = geometry.boundingBox.getCenter(new THREE.Vector3());
+                geometry.translate(-center.x, -center.y, -center.z);
+                geometry.rotateX(Math.PI / 2);
+                geometry.computeBoundingBox();
+                const size = geometry.boundingBox.getSize(new THREE.Vector3());
+                const scale = 0.3 / Math.max(size.x, size.y, size.z);
+                geometry.scale(scale, scale, scale);
+                geometry.computeVertexNormals();
+                inclusionGeometryCache = geometry;
+                return geometry.clone();
+            })
+            .catch(err => {
+                console.warn('[emotive-hex-agent] soul inclusion failed to load:', err);
+                inclusionGeometryLoading = null;
+                return null;
+            });
         return inclusionGeometryLoading;
     }
 

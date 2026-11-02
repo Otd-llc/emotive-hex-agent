@@ -28,6 +28,7 @@
  */
 
 import * as THREE from 'three';
+import { isCrystalFamily } from '../geometries/ThreeGeometries.js';
 
 // Define shaders inline (avoid import issues with .glsl files)
 const particleVertexShader = `
@@ -295,12 +296,7 @@ export class Particle3DRenderer {
             // CRYSTAL/HEART/ROUGH: Cull particles in front of the soul
             // These geometries have a visible soul inside, particles in front block the view
             // Threshold slightly positive to allow particles at the edges
-            if (
-                (geometryType === 'crystal' ||
-                    geometryType === 'heart' ||
-                    geometryType === 'rough') &&
-                pos3D.z > 0.15
-            ) {
+            if (isCrystalFamily(geometryType) && pos3D.z > 0.15) {
                 // Hide particle by setting alpha to 0
                 this.alphas[i] = 0;
                 continue;

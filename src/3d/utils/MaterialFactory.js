@@ -31,143 +31,35 @@ import { getSurface, onSurfaceChange } from '../materials/surface.js';
 import { DEFORMATION_DEFAULT_UNIFORMS } from '../shaders/utils/deformation.js';
 import { CRACK_DEFAULT_UNIFORMS } from '../shaders/utils/objectSpaceCracks.js';
 
+/**
+ * Material for a registry entry. Branches on the entry's `crystalFamily` flag, never on its
+ * name: every crystal-family shape gets the crystal shader + the hexgem detail map.
+ * @param {string} geometryType - registry name (logging only)
+ * @param {Object} geometryConfig - THREE_GEOMETRIES entry
+ * @returns {{ material: THREE.ShaderMaterial, type: 'crystal' } | null}
+ */
 export function createCustomMaterial(geometryType, geometryConfig, options = {}) {
-    const {
-        glowColor = [1.0, 1.0, 0.95],
-        glowIntensity = 1.0,
-        materialVariant = null,
-        emotionData = null,
-        assetBasePath = '/assets',
-        onTextureReady = null,
-    } = options;
-
-    if (geometryConfig.material === 'custom') {
-        return createCustomTypeMaterial(
-            geometryType,
-            glowColor,
-            glowIntensity,
-            materialVariant,
-            emotionData,
-            assetBasePath,
-            onTextureReady
-        );
-    }
-
-    if (geometryConfig.material === 'emissive') {
-        return createEmissiveMaterial(
-            geometryType,
-            glowColor,
-            glowIntensity,
-            materialVariant,
-            emotionData,
-            assetBasePath
-        );
-    }
-
-    return null;
+    const { glowColor = [1.0, 1.0, 0.95], glowIntensity = 1.0, assetBasePath } = options;
+    if (geometryConfig?.crystalFamily !== true) return null;
+    return createCrystalMaterial(glowColor, glowIntensity, geometryConfig.materialOverrides || { sssPreset: 'quartz' }, assetBasePath);
 }
 
-function createCustomTypeMaterial(
-    geometryType,
-    glowColor,
-    glowIntensity,
-    materialVariant,
-    _emotionData,
-    assetBasePath,
-    onTextureReady
-) {
-    switch (geometryType) {
-        case 'crystal':
-            // Uses quartz SSS preset for clear crystal appearance
-            return createCrystalMaterial(
-                glowColor,
-                glowIntensity,
-                'crystal',
-                { sssPreset: 'quartz' },
-                assetBasePath
-            );
-        case 'rough':
-            // Custom crystal appearance for rough stone, uses crystal SSS preset
-            return createCrystalMaterial(
-                glowColor,
-                glowIntensity,
-                'rough',
-                {
-                    frostiness: 0.05,
-                    innerGlowStrength: 0.0,
-                    fresnelIntensity: 1.6,
-                },
-                assetBasePath
-            );
-        case 'heart':
-            // Custom crystal appearance for heart - tuned for flat geometry
-            return createCrystalMaterial(
-                glowColor,
-                glowIntensity,
-                'heart',
-                {
-                    frostiness: 0.475,
-                    innerGlowStrength: 0.117,
-                    fresnelIntensity: 1.206,
-                },
-                assetBasePath
-            );
-        case 'star':
-            // Star crystal with citrine SSS preset
-            return createCrystalMaterial(
-                glowColor,
-                glowIntensity,
-                'star',
-                { sssPreset: 'citrine' },
-                assetBasePath
-            );
-        default:
-            console.warn('Unknown custom material type:', geometryType);
-            return null;
-    }
-}
+/** The gem detail map (R edge thickness, G honeycomb, B noise), shared by every shape. */
+export const DETAIL_MAP = 'hexgem-detail.webp';
 
-function createEmissiveMaterial(
-    geometryType,
-    glowColor,
-    glowIntensity,
-    materialVariant,
-    emotionData,
-    assetBasePath
-) {
-    switch (geometryType) {
-        default:
-            console.warn('Unknown emissive material type:', geometryType);
-            return null;
-    }
-}
-
-function createCrystalMaterial(
-    glowColor,
-    glowIntensity,
-    textureType = 'crystal',
-    overrides = {},
-    assetBasePath = '/assets'
-) {
+function createCrystalMaterial(glowColor, glowIntensity, overrides = {}, assetBasePath) {
     const { vertexShader, fragmentShader } = getCrystalShaders();
 
-    // Load texture based on geometry type
-    let crystalTexture = null;
-    if (textureType) {
-        const texturePaths = {
-            crystal: `${assetBasePath}/textures/Crystal/crystal.webp`,
-            rough: `${assetBasePath}/textures/Crystal/rough.webp`,
-            heart: `${assetBasePath}/textures/Crystal/heart.webp`,
-            star: `${assetBasePath}/textures/Crystal/star.webp`,
-        };
-        const texturePath = texturePaths[textureType] || texturePaths.crystal;
-        crystalTexture = textureLoader.load(texturePath, tex => {
+    const texturePath = `${String(assetBasePath).replace(/\/+$/, '')}/${DETAIL_MAP}`;
+    const crystalTexture = textureLoader.load(
+        texturePath,
+        tex => {
             // Track texture on material for disposal
             if (material) material.userData._crystalTexture = tex;
-        }, undefined, err =>
-            console.warn(`💎 ${textureType} texture failed to load:`, err)
-        );
-    }
+        },
+        undefined,
+        err => console.warn('[emotive-hex-agent] detail map failed to load:', err)
+    );
 
     // Get SSS preset if specified, otherwise use defaults
     const sssPreset = overrides.sssPreset ? SSS_PRESETS[overrides.sssPreset] : null;
@@ -221,15 +113,7 @@ function createCrystalMaterial(
                 value: overrides.causticSpeed ?? CRYSTAL_DEFAULT_UNIFORMS.causticSpeed,
             },
             crystalTexture: { value: crystalTexture },
-            // Heart texture slightly more transparent than crystal
-            textureStrength: {
-                value:
-                    textureType === 'heart'
-                        ? 0.35
-                        : textureType
-                          ? CRYSTAL_DEFAULT_UNIFORMS.textureStrength
-                          : 0.0,
-            },
+            textureStrength: { value: overrides.textureStrength ?? CRYSTAL_DEFAULT_UNIFORMS.textureStrength },
             // Soul refraction - samples soul texture with optical distortion
             soulTexture: { value: null }, // Set by ThreeRenderer at render time
             resolution: {

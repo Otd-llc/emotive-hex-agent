@@ -1,280 +1,178 @@
 /**
- * Three.js Procedural Geometries
+ * Geometry registry, hex-agent edition.
  *
- * Replaces custom WebGL geometries with Three.js BufferGeometry
- * Maintains same shape designs but uses Three.js infrastructure
+ * Six purpose-made crystal shapes (Blender outputs, GLB) plus a plain sphere fallback. Every
+ * crystal entry carries `crystalFamily: true` and its own soul/shell scale and calibration
+ * rotation; the material factory, the soul and the shell/blink/uniform paths branch on that
+ * flag, never on a geometry name. The stock OBJ crystal and the rough/heart/star loaders are
+ * deleted.
  */
 
 import * as THREE from 'three';
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
-import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
-import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { loadHeartGeometry } from './Heart.js';
-import { loadStarGeometry } from './Star.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+
+/** Max dimension every crystal shape is normalised to (the shell scale multiplies it). */
+export const CRYSTAL_MAX_DIM = 1.6;
 
 /**
- * Merge vertices at the same position to create smooth normals
- * This eliminates the faceted appearance by averaging normals at shared vertices
- * @param {THREE.BufferGeometry} geometry
+ * Defaults for a crystal-family entry. Calibration is in degrees (applied on top of every
+ * animation). The Blender gems put a hexagon VERTEX on +X and a FLAT on +Z, so y = 0 already
+ * shows a flat facet to the camera (the stock OBJ needed 30 degrees). The look round may tune
+ * these per shape.
+ */
+export const CRYSTAL_FAMILY_DEFAULTS = Object.freeze({
+    soulScale: 1.0,
+    shellScale: 2.0,
+    calibration: Object.freeze({ x: 0, y: 0, z: 0 }),
+});
+
+const ATTRS = ['position', 'normal', 'uv'];
+
+/** Float32 copy of an attribute (dequantises normalised integer attributes). */
+function toFloat32(attr) {
+    if (attr.array instanceof Float32Array && !attr.normalized) return attr.clone();
+    const out = new Float32Array(attr.count * attr.itemSize);
+    for (let i = 0; i < attr.count; i++) {
+        for (let k = 0; k < attr.itemSize; k++) out[i * attr.itemSize + k] = attr.getComponent(i, k);
+    }
+    return new THREE.BufferAttribute(out, attr.itemSize);
+}
+
+/**
+ * Bake every mesh under `root` into one geometry in root space: world matrices are applied
+ * (updateWorldMatrix + applyMatrix4) BEFORE anything is cached, so a node transform (e.g. the
+ * dequantisation transform meshopt quantisation puts on the node) is never lost.
+ * Keeps position/normal/uv only. Source geometries are not modified.
+ * @param {THREE.Object3D} root
  * @returns {THREE.BufferGeometry}
  */
-function mergeVerticesForSmoothNormals(geometry) {
-    // BufferGeometryUtils.mergeVertices merges vertices that share the same position
-    // This allows computeVertexNormals to average normals across faces
-    const merged = BufferGeometryUtils.mergeVertices(geometry, 0.0001);
+export function geometryFromScene(root) {
+    root.updateWorldMatrix(true, true);
+    const parts = [];
+    root.traverse(o => {
+        if (!o.isMesh || !o.geometry?.attributes?.position) return;
+        const g = new THREE.BufferGeometry();
+        for (const a of ATTRS) if (o.geometry.attributes[a]) g.setAttribute(a, toFloat32(o.geometry.attributes[a]));
+        if (o.geometry.index) g.setIndex(o.geometry.index.clone());
+        g.applyMatrix4(o.matrixWorld);
+        parts.push(g);
+    });
+    if (parts.length === 0) throw new Error('[emotive-hex-agent] GLB has no mesh');
+    if (parts.length === 1) return parts[0];
+    const shared = ATTRS.filter(a => parts.every(p => p.attributes[a]));
+    const indexed = parts.every(p => p.index);
+    const ready = parts.map(p => {
+        const q = indexed ? p : p.index ? p.toNonIndexed() : p;
+        for (const a of Object.keys(q.attributes)) if (!shared.includes(a)) q.deleteAttribute(a);
+        return q;
+    });
+    const merged = mergeGeometries(ready, false);
+    if (!merged) throw new Error('[emotive-hex-agent] could not merge GLB meshes');
     return merged;
 }
 
-// Default simplification ratio (0 = no simplification, 0.9 = remove 90% of vertices)
-// DISABLED - SimplifyModifier may be causing issues
-let crystalSimplificationRatio = 0;
-
-// Whether to use smooth normals (eliminates faceted appearance)
-// DISABLED - mergeVertices may be causing issues
-let crystalUseSmoothNormals = false;
-
 /**
- * Set crystal mesh simplification ratio
- * @param {number} ratio - 0 to 0.95 (higher = fewer triangles)
+ * Centre a geometry and scale its largest dimension to `maxDim`. Recomputes normals: the
+ * Blender files share vertices only within a flat facet, so the facets stay flat.
+ * @param {THREE.BufferGeometry} g
+ * @param {number} [maxDim]
  */
-export function setCrystalSimplification(ratio) {
-    crystalSimplificationRatio = Math.max(0, Math.min(0.95, ratio));
+export function normalizeCrystal(g, maxDim = CRYSTAL_MAX_DIM) {
+    g.computeBoundingBox();
+    const c = g.boundingBox.getCenter(new THREE.Vector3());
+    g.translate(-c.x, -c.y, -c.z);
+    const s = g.boundingBox.getSize(new THREE.Vector3());
+    const k = maxDim / Math.max(s.x, s.y, s.z);
+    g.scale(k, k, k);
+    g.computeVertexNormals();
+    g.computeBoundingBox();
+    g.computeBoundingSphere();
+    return g;
 }
 
 /**
- * Set whether crystal should use smooth normals
- * @param {boolean} smooth - true for smooth, false for faceted
+ * Parse a GLB (ArrayBuffer) into one baked geometry.
+ * @param {ArrayBuffer} buffer
+ * @param {{ normalize?: boolean }} [opts]
+ * @returns {Promise<THREE.BufferGeometry>}
  */
-export function setCrystalSmoothNormals(smooth) {
-    crystalUseSmoothNormals = smooth;
+export async function parseCrystalGLB(buffer, { normalize = true } = {}) {
+    // GLTFLoader tests `instanceof ArrayBuffer`; copy a foreign-realm buffer (tests, workers).
+    if (!(buffer instanceof ArrayBuffer)) {
+        const bytes = new Uint8Array(buffer);
+        buffer = new ArrayBuffer(bytes.byteLength);
+        new Uint8Array(buffer).set(bytes);
+    }
+    const gltf = await new GLTFLoader().parseAsync(buffer, '');
+    const g = geometryFromScene(gltf.scene);
+    return normalize ? normalizeCrystal(g) : g;
 }
 
+/** url -> Promise<BufferGeometry> (CPU only; callers get clones). */
+const glbCache = new Map();
+
 /**
- * Load crystal OBJ model asynchronously
- * @param {string} assetBasePath - Base path for assets (default: '/assets')
- * @returns {Promise<THREE.BufferGeometry>} Crystal geometry
+ * Fetch a GLB once per URL; every caller gets its own clone (the core mesh disposes its
+ * geometry on a swap). Rejects on an HTTP error; the failed URL is not cached.
+ * @param {string} url
+ * @param {{ normalize?: boolean }} [opts]
+ * @returns {Promise<THREE.BufferGeometry>}
  */
-function loadCrystalGeometry(assetBasePath = '/assets') {
-    return new Promise((resolve, _reject) => {
-        const loader = new OBJLoader();
-        loader.load(
-            `${assetBasePath}/models/Crystal/crystal.obj`,
-            obj => {
-                let geometry = null;
-                obj.traverse(child => {
-                    if (child.isMesh && child.geometry) {
-                        ({ geometry } = child);
-                    }
-                });
-
-                if (geometry) {
-                    geometry.computeBoundingBox();
-                    const center = new THREE.Vector3();
-                    geometry.boundingBox.getCenter(center);
-                    geometry.translate(-center.x, -center.y, -center.z);
-
-                    const size = new THREE.Vector3();
-                    geometry.boundingBox.getSize(size);
-                    const maxDim = Math.max(size.x, size.y, size.z);
-                    const scale = 1.6 / maxDim; // Scale to ~1.6 diameter to match sun/moon size
-                    geometry.scale(scale, scale, scale);
-                    // Preserve original OBJ normals if present, otherwise compute them
-                    if (!geometry.attributes.normal) {
-                        geometry.computeVertexNormals();
-                    }
-                    // else: keep original normals from OBJ file
-
-                    // Recompute bounding box after transforms
-                    geometry.computeBoundingBox();
-                    const finalSize = new THREE.Vector3();
-                    geometry.boundingBox.getSize(finalSize);
-
-                    // Simplify geometry to reduce triangle count
-                    let finalGeometry = geometry;
-                    if (crystalSimplificationRatio > 0) {
-                        const originalVertexCount = geometry.attributes.position.count;
-                        const targetCount = Math.floor(
-                            originalVertexCount * (1 - crystalSimplificationRatio)
-                        );
-
-                        try {
-                            const modifier = new SimplifyModifier();
-                            finalGeometry = modifier.modify(geometry, targetCount);
-                        } catch (err) {
-                            console.warn(
-                                '💎 [CRYSTAL] Simplification failed, using original:',
-                                err
-                            );
-                            finalGeometry = geometry;
-                        }
-                    }
-
-                    // Compute normals - smooth or faceted
-                    if (crystalUseSmoothNormals) {
-                        try {
-                            // Merge vertices to create smooth normals across shared vertices
-                            const merged = mergeVerticesForSmoothNormals(finalGeometry);
-                            if (
-                                merged &&
-                                merged.attributes.position &&
-                                merged.attributes.position.count > 0
-                            ) {
-                                finalGeometry = merged;
-                                finalGeometry.computeVertexNormals();
-                            } else {
-                                console.warn(
-                                    '💎 [CRYSTAL] Merge produced empty geometry, using original with recomputed normals'
-                                );
-                                finalGeometry.computeVertexNormals();
-                            }
-                        } catch (err) {
-                            console.warn('💎 [CRYSTAL] Smooth normals failed:', err);
-                            finalGeometry.computeVertexNormals();
-                        }
-                    } else {
-                        // Faceted look - each triangle has its own normals
-                        finalGeometry.computeVertexNormals();
-                    }
-
-                    resolve(finalGeometry);
-                } else {
-                    console.warn('💎 [CRYSTAL] No mesh in OBJ, using fallback');
-                    const fallback = createProceduralCrystal();
-                    resolve(fallback);
-                }
-            },
-            _progress => {
-                // Progress callback - intentionally empty
-            },
-            error => {
-                console.warn('💎 [CRYSTAL] OBJ load FAILED:', error);
-                const fallback = createProceduralCrystal();
-                resolve(fallback);
-            }
-        );
-    });
+export function loadCrystalGeometry(url, opts = {}) {
+    const key = `${url}|${opts.normalize !== false}`;
+    if (!glbCache.has(key)) {
+        const p = fetch(url)
+            .then(r => {
+                if (!r.ok) throw new Error(`[emotive-hex-agent] ${url}: HTTP ${r.status}`);
+                return r.arrayBuffer();
+            })
+            .then(buf => parseCrystalGLB(buf, opts));
+        p.catch(() => glbCache.delete(key));
+        glbCache.set(key, p);
+    }
+    return glbCache.get(key).then(g => g.clone());
 }
 
+/** Join an asset base path and a file name. */
+export const assetUrl = (base, file) => `${String(base).replace(/\/+$/, '')}/${file}`;
+
 /**
- * Create procedural crystal geometry (fallback)
- * Scaled to match OBJ-loaded crystal (~1.6 diameter)
- * @returns {THREE.BufferGeometry}
+ * One crystal-family registry entry.
+ * @param {string} file - GLB name under assetBasePath
+ * @param {Partial<typeof CRYSTAL_FAMILY_DEFAULTS>} [over]
  */
-function createProceduralCrystal() {
-    const segments = 6;
-    // Base dimensions (will be scaled down to match OBJ size)
-    const height = 3.0;
-    const radius = 1.0;
-    const pointHeight = 0.8;
-
-    const geometry = new THREE.BufferGeometry();
-    const vertices = [];
-    const indices = [];
-
-    vertices.push(0, height / 2 + pointHeight, 0);
-
-    for (let i = 0; i < segments; i++) {
-        const angle = (i / segments) * Math.PI * 2;
-        vertices.push(Math.cos(angle) * radius, height / 2, Math.sin(angle) * radius);
-    }
-
-    for (let i = 0; i < segments; i++) {
-        const angle = (i / segments) * Math.PI * 2;
-        vertices.push(Math.cos(angle) * radius, -height / 2, Math.sin(angle) * radius);
-    }
-
-    vertices.push(0, -height / 2 - pointHeight, 0);
-
-    for (let i = 0; i < segments; i++) {
-        const next = (i + 1) % segments;
-        indices.push(0, 1 + i, 1 + next);
-    }
-
-    for (let i = 0; i < segments; i++) {
-        const next = (i + 1) % segments;
-        indices.push(1 + i, 1 + segments + i, 1 + next);
-        indices.push(1 + next, 1 + segments + i, 1 + segments + next);
-    }
-
-    const bottomIdx = 1 + segments * 2;
-    for (let i = 0; i < segments; i++) {
-        const next = (i + 1) % segments;
-        indices.push(bottomIdx, 1 + segments + next, 1 + segments + i);
-    }
-
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.setIndex(indices);
-
-    // Scale to match OBJ-loaded crystal (~1.6 diameter)
-    // Current max dimension is height + 2*pointHeight = 3.0 + 1.6 = 4.6
-    const scale = 1.6 / 4.6;
-    geometry.scale(scale, scale, scale);
-
-    geometry.computeVertexNormals();
-    return geometry;
+function crystalShape(file, over = {}) {
+    return {
+        geometry: null,
+        file,
+        geometryLoader: base => loadCrystalGeometry(assetUrl(base, file)),
+        material: 'custom',
+        crystalFamily: true,
+        soulScale: over.soulScale ?? CRYSTAL_FAMILY_DEFAULTS.soulScale,
+        shellScale: over.shellScale ?? CRYSTAL_FAMILY_DEFAULTS.shellScale,
+        calibration: { ...CRYSTAL_FAMILY_DEFAULTS.calibration, ...(over.calibration || {}) },
+        blink: {
+            type: 'facet-flash',
+            duration: 160,
+            scaleAxis: [0.95, 0.95, 0.95],
+            glowBoost: 0.4,
+            curve: 'sine',
+        },
+        particleRadiusMultiplier: 1.4,
+    };
 }
 
-/**
- * Load rough OBJ model asynchronously
- * @param {string} assetBasePath - Base path for assets (default: '/assets')
- * @returns {Promise<THREE.BufferGeometry>} Rough geometry
- */
-function loadRoughGeometry(assetBasePath = '/assets') {
-    return new Promise(resolve => {
-        const loader = new OBJLoader();
-        loader.load(
-            `${assetBasePath}/models/Crystal/rough.obj`,
-            obj => {
-                let geometry = null;
-                obj.traverse(child => {
-                    if (child.isMesh && child.geometry) {
-                        ({ geometry } = child);
-                    }
-                });
-
-                if (geometry) {
-                    // Center the geometry
-                    geometry.computeBoundingBox();
-                    const center = new THREE.Vector3();
-                    geometry.boundingBox.getCenter(center);
-                    geometry.translate(-center.x, -center.y, -center.z);
-
-                    // Scale to ~1.6 diameter to match other geometries
-                    const size = new THREE.Vector3();
-                    geometry.boundingBox.getSize(size);
-                    const maxDim = Math.max(size.x, size.y, size.z);
-                    const scale = 1.6 / maxDim;
-                    geometry.scale(scale, scale, scale);
-
-                    // Compute normals
-                    geometry.computeVertexNormals();
-                    geometry.computeBoundingBox();
-
-                    resolve(geometry);
-                } else {
-                    console.warn('💎 [ROUGH] No mesh in OBJ, using fallback sphere');
-                    resolve(new THREE.SphereGeometry(0.5, 32, 32));
-                }
-            },
-            undefined,
-            error => {
-                console.warn('💎 [ROUGH] OBJ load failed:', error);
-                resolve(new THREE.SphereGeometry(0.5, 32, 32));
-            }
-        );
-    });
-}
+/** The picked morph set (D7), base first. */
+export const CRYSTAL_SHAPES = ['hexgem', 'twisted', 'trio', 'cluster', 'split', 'rosette'];
 
 /**
- * Core geometry registry using Three.js
- *
- * Safe geometries only - all use compatible material systems:
- * - Crystal-type: crystal, rough, heart, star (CrystalSoul + SSS shader)
+ * Core geometry registry.
+ * hexgem = base (idle/listening/typing), twisted = thinking/searching, trio = placing parts,
+ * cluster = almost done, split = refused/undo, rosette = done (owner pick D7).
  */
 export const THREE_GEOMETRIES = {
-    // Plain sphere — the default when coreGeometry is omitted, and the target of
-    // Core3DManager's unknown-geometry fallback. Both paths dereference this entry,
-    // so it must stay registered even though no demo selects it by name.
+    // Plain sphere: Core3DManager's unknown-geometry fallback dereferences this entry.
     sphere: {
         geometry: new THREE.SphereGeometry(0.5, 64, 64),
         material: 'custom',
@@ -287,66 +185,13 @@ export const THREE_GEOMETRIES = {
         },
         particleRadiusMultiplier: 1.4,
     },
-
-
-
-    // Crystal with inner soul glow
-    crystal: {
-        geometry: null,
-        geometryLoader: loadCrystalGeometry,
-        material: 'custom',
-        blink: {
-            type: 'facet-flash',
-            duration: 160,
-            scaleAxis: [0.95, 0.95, 0.95],
-            glowBoost: 0.4,
-            curve: 'sine',
-        },
-        particleRadiusMultiplier: 1.4, // Spread particles out from the crystal
-    },
-
-    // Rough (raw crystal formation)
-    rough: {
-        geometry: null,
-        geometryLoader: loadRoughGeometry,
-        material: 'custom',
-        blink: {
-            type: 'facet-flash',
-            duration: 150,
-            scaleAxis: [0.95, 0.95, 0.95],
-            glowBoost: 0.5,
-            curve: 'sine',
-        },
-        particleRadiusMultiplier: 1.3, // Spread particles out from the rough formation
-    },
-
-    // Heart-cut crystal
-    heart: {
-        geometry: null,
-        geometryLoader: loadHeartGeometry,
-        material: 'custom',
-        blink: {
-            type: 'gentle-pulse',
-            duration: 180,
-            scaleAxis: [0.92, 0.92, 0.92],
-            glowBoost: 0.6,
-            curve: 'sine',
-        },
-        particleRadiusMultiplier: 1.3, // Spread particles out from the heart
-    },
-
-    // Star-cut crystal
-    star: {
-        geometry: null,
-        geometryLoader: loadStarGeometry,
-        material: 'custom',
-        blink: {
-            type: 'facet-flash',
-            duration: 150,
-            scaleAxis: [0.93, 0.93, 0.93],
-            glowBoost: 0.5,
-            curve: 'sine',
-        },
-        particleRadiusMultiplier: 1.4, // Spread particles out from the star
-    },
+    hexgem: crystalShape('crystal-double-terminated.glb'),
+    twisted: crystalShape('crystal-dt-twisted.glb'),
+    trio: crystalShape('crystal-dt-trio.glb'),
+    cluster: crystalShape('crystal-dt-cluster.glb'),
+    split: crystalShape('crystal-dt-split.glb'),
+    rosette: crystalShape('crystal-dt-rosette.glb'),
 };
+
+/** @param {string} name @returns {boolean} */
+export const isCrystalFamily = name => THREE_GEOMETRIES[name]?.crystalFamily === true;

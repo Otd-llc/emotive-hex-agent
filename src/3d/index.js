@@ -28,7 +28,7 @@ const VALID_GEOMETRIES = Object.keys(THREE_GEOMETRIES);
  * EmotiveMascot3D: the gem.
  *
  * @example
- * const mascot = new EmotiveMascot3D({ coreGeometry: 'crystal', assetBasePath: '/agent/' });
+ * const mascot = new EmotiveMascot3D({ coreGeometry: 'hexgem', assetBasePath: '/agent/' });
  * mascot.init(container);
  * await mascot.start();
  * mascot.setEmotion('joy');
@@ -38,17 +38,17 @@ export class EmotiveMascot3D {
     /**
      * @param {Object} [config={}]
      * @param {string} [config.canvasId='emotive-canvas'] - id prefix of the WebGL canvas
-     * @param {string} [config.coreGeometry='crystal'] - geometry name
+     * @param {string} [config.coreGeometry='hexgem'] - geometry name (see CRYSTAL_SHAPES)
      * @param {boolean} [config.enableParticles=true]
      * @param {string} [config.defaultEmotion='neutral']
-     * @param {string} [config.assetBasePath] - base URL of models/ and textures/
+     * @param {string} config.assetBasePath - base URL of the agent assets (GLBs + detail map)
      * @param {'dark'|'light'} [config.surface] - what the transparent canvas sits on
      */
     constructor(config = {}) {
         assertAssetBasePath(config.assetBasePath);
         this.config = {
             canvasId: config.canvasId || 'emotive-canvas',
-            coreGeometry: config.coreGeometry || 'crystal',
+            coreGeometry: config.coreGeometry || 'hexgem',
             enableParticles: config.enableParticles !== false,
             defaultEmotion: config.defaultEmotion || 'neutral',
             ...config,

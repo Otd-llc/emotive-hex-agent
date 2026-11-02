@@ -35,20 +35,26 @@ import { createCustomMaterial, disposeCustomMaterial, disposeTextureCache } from
 import { resetGeometryState } from './GeometryStateManager.js';
 import * as GeometryCache from './utils/GeometryCache.js';
 import { AnimationManager } from './managers/AnimationManager.js';
-import { EffectManager } from './managers/EffectManager.js';
 import { BehaviorController } from './managers/BehaviorController.js';
 import { BreathingPhaseManager } from './managers/BreathingPhaseManager.js';
 import { createElectricMaterial } from './materials/overlays/ElectricMaterial.js';
 import { ElementInstancedSpawner } from './effects/ElementInstancedSpawner.js';
 
-// Crystal calibration rotation to show flat facet facing camera
-// Hexagonal crystal has vertices at 0°, 60°, 120°, etc.
-// Rotating 30° around Y puts a flat face toward the camera (default -Z view direction)
-const CRYSTAL_CALIBRATION_ROTATION = {
-    x: 0, // No X rotation
-    y: 30, // 30° Y rotation to show flat facet
-    z: 0, // No Z rotation
-};
+const DEG = Math.PI / 180;
+
+/**
+ * Calibration rotation (radians) for a registry entry: a crystal-family entry's own
+ * `calibration` (degrees), zero for anything else.
+ * @param {Object} config - THREE_GEOMETRIES entry
+ * @param {number[]} [out]
+ */
+function calibrationFor(config, out = [0, 0, 0]) {
+    const c = config?.crystalFamily ? config.calibration : null;
+    out[0] = (c?.x ?? 0) * DEG;
+    out[1] = (c?.y ?? 0) * DEG;
+    out[2] = (c?.z ?? 0) * DEG;
+    return out;
+}
 
 // Element types this build can preload
 const ALL_ELEMENT_TYPES = ['electricity'];
@@ -212,20 +218,9 @@ export class Core3DManager {
         this.cameraRoll = 0; // in radians
 
 
-        // Set initial calibration rotation for crystal/rough/heart/star to show flat facet facing camera
-        if (
-            this.geometryType === 'crystal' ||
-            this.geometryType === 'rough' ||
-            this.geometryType === 'heart' ||
-            this.geometryType === 'star'
-        ) {
-            const degToRad = Math.PI / 180;
-            this.calibrationRotation = [
-                CRYSTAL_CALIBRATION_ROTATION.x * degToRad,
-                CRYSTAL_CALIBRATION_ROTATION.y * degToRad,
-                CRYSTAL_CALIBRATION_ROTATION.z * degToRad,
-            ];
-        }
+        // Calibration rotation from the entry (crystal family), zero otherwise.
+        calibrationFor(this.geometryConfig, this.calibrationRotation);
+        if (this.geometryConfig.crystalFamily) this.crystalShellBaseScale = this.geometryConfig.shellScale;
 
         // Animation controller
         this.animator = new ProceduralAnimator();
@@ -235,9 +230,6 @@ export class Core3DManager {
 
         // Animation manager (orchestrates gesture playback and blending)
         this.animationManager = new AnimationManager(this.animator, this.gestureBlender);
-
-        // Effect manager (manages SolarEclipse, LunarEclipse, CrystalSoul effects)
-        this.effectManager = new EffectManager(this.renderer, this.assetBasePath);
 
         // Behavior controller (manages rotation, righting, and facing behaviors)
         this.behaviorController = new BehaviorController({
@@ -355,13 +347,6 @@ export class Core3DManager {
             particleRenderer.geometry.setDrawRange(0, 0);
         }
 
-        // Initialize geometry-specific effects via EffectManager
-        const sunRadius = this.geometry?.parameters?.radius || 0.5;
-        this.effectManager.initializeForGeometry(this.geometryType, {
-            coreMesh: this.coreMesh,
-            customMaterial: this.customMaterial,
-            sunRadius,
-        });
 
 
         // ═══════════════════════════════════════════════════════════════════════════
@@ -651,11 +636,7 @@ export class Core3DManager {
      * @param {Object} params - { mode, strength, enabled }
      */
     setCrystalBlendLayer(component, blendIndex, params = {}) {
-        if (
-            (this.geometryType !== 'crystal' && this.geometryType !== 'rough') ||
-            !this.customMaterial ||
-            this.customMaterialType !== 'crystal'
-        ) {
+        if (!this.geometryConfig?.crystalFamily || !this.customMaterial || this.customMaterialType !== 'crystal') {
             return;
         }
 
@@ -677,11 +658,7 @@ export class Core3DManager {
      * @param {Object} params - Crystal uniform values
      */
     setCrystalUniforms(params = {}) {
-        if (
-            (this.geometryType !== 'crystal' && this.geometryType !== 'rough') ||
-            !this.customMaterial ||
-            this.customMaterialType !== 'crystal'
-        ) {
+        if (!this.geometryConfig?.crystalFamily || !this.customMaterial || this.customMaterialType !== 'crystal') {
             console.warn('[Core3DManager] Crystal uniforms only available with crystal blend-layers material');
             return;
         }
@@ -753,22 +730,10 @@ export class Core3DManager {
         });
         this.crystalSoul.attachTo(this.coreMesh, this.renderer?.scene);
 
-        // Geometry-specific shell and soul sizes (permanent values)
-        // Use effectiveGeometryType to get correct scale during morph transitions
-        let soulScale = 1.0; // Default: full size (HUGE)
-        if (effectiveGeometryType === 'heart') {
-            this.crystalShellBaseScale = 2.4;
-            soulScale = 1.0; // Full size for heart
-        } else if (effectiveGeometryType === 'rough') {
-            this.crystalShellBaseScale = 1.6;
-            soulScale = 1.0; // Full size for rough
-        } else if (effectiveGeometryType === 'star') {
-            this.crystalShellBaseScale = 2.0;
-            soulScale = 1.4; // Larger soul for star to fill the shape
-        } else if (effectiveGeometryType === 'crystal') {
-            this.crystalShellBaseScale = 2.0; // Default crystal shell size
-            soulScale = 1.0; // Full size for crystal
-        }
+        // Shell and soul sizes come from the entry (use the morph target's during a morph).
+        const cfg = this._targetGeometryConfig || this.geometryConfig;
+        this.crystalShellBaseScale = cfg?.shellScale ?? 2.0;
+        const soulScale = cfg?.soulScale ?? 1.0;
 
         this.crystalSoul.baseScale = soulScale;
         this.crystalSoul.mesh.scale.setScalar(soulScale);
@@ -833,13 +798,7 @@ export class Core3DManager {
      * @param {number} size - Size value 0.5-2.0, where 1.0 is default
      */
     setCrystalShellSize(size) {
-        if (
-            !this.coreMesh ||
-            (this.geometryType !== 'crystal' &&
-                this.geometryType !== 'rough' &&
-                this.geometryType !== 'heart')
-        )
-            return;
+        if (!this.coreMesh || !this.geometryConfig?.crystalFamily) return;
 
         // Store base shell scale for use during rendering
         this.crystalShellBaseScale = size;
@@ -1086,9 +1045,8 @@ export class Core3DManager {
             // Clear shader uniforms to defaults before swapping to prevent
             // visual remnants (e.g., blood moon effects bleeding to crystal)
             // ═══════════════════════════════════════════════════════════════════
-            const oldGeometryType = this.geometryType;
             if (this.customMaterial) {
-                resetGeometryState(oldGeometryType, this.customMaterial);
+                resetGeometryState(this.geometryConfig, this.customMaterial);
             }
 
             this.geometry = this._targetGeometry;
@@ -1165,29 +1123,14 @@ export class Core3DManager {
             // Reset Euler angles to upright [pitch=0, yaw=0, roll=0]
             this.rotation = [0, 0, 0];
 
-            // Initialize effects for target geometry via EffectManager
-            // This automatically disposes effects not needed for the target geometry
-            const sunRadius = this.geometry.parameters?.radius || 0.5;
-            this.effectManager.initializeForGeometry(this._targetGeometryType, {
-                coreMesh: this.renderer.coreMesh,
-                customMaterial: this.customMaterial,
-                sunRadius,
-            });
 
 
-            // Create or dispose crystal inner core (still uses createCrystalInnerCore for now)
-            if (
-                this._targetGeometryType === 'crystal' ||
-                this._targetGeometryType === 'rough' ||
-                this._targetGeometryType === 'heart' ||
-                this._targetGeometryType === 'star'
-            ) {
-                // Create inner core if morphing to crystal/rough/heart/star
+            // Create or dispose the soul: crystal family only (flag, not name).
+            if (this._targetGeometryConfig?.crystalFamily) {
                 if (this.customMaterialType === 'crystal') {
                     this.createCrystalInnerCore();
                 }
             } else {
-                // Dispose inner core if morphing away from crystal/rough/heart/star
                 if (this.crystalSoul) {
                     this.crystalSoul.dispose();
                     this.crystalSoul = null;
@@ -1211,22 +1154,8 @@ export class Core3DManager {
             });
 
 
-            // Set calibration rotation for crystal/rough/heart, clear for others
-            if (
-                this._targetGeometryType === 'crystal' ||
-                this._targetGeometryType === 'rough' ||
-                this._targetGeometryType === 'heart'
-            ) {
-                const degToRad = Math.PI / 180;
-                this.calibrationRotation[0] = CRYSTAL_CALIBRATION_ROTATION.x * degToRad;
-                this.calibrationRotation[1] = CRYSTAL_CALIBRATION_ROTATION.y * degToRad;
-                this.calibrationRotation[2] = CRYSTAL_CALIBRATION_ROTATION.z * degToRad;
-            } else {
-                // Clear calibration rotation for other geometries
-                this.calibrationRotation[0] = 0;
-                this.calibrationRotation[1] = 0;
-                this.calibrationRotation[2] = 0;
-            }
+            // Calibration from the target entry (zero for non-crystal entries).
+            calibrationFor(this._targetGeometryConfig, this.calibrationRotation);
 
             // No post-swap hold — mascot is at 8% scale (nearly invisible) so
             // textures load from cache or network by the time it's large enough to see.
@@ -1727,8 +1656,7 @@ export class Core3DManager {
         // Calculate final scale: gesture * morph * breathing * BLINK * crystal shell scale
         // Crystal/diamond don't squish on blink - they use energy pulse instead
         // Use Y-axis blink scale (primary squish axis) for uniform application
-        const shouldApplyBlinkScale =
-            this.geometryType !== 'crystal' && this.geometryType !== 'rough';
+        const shouldApplyBlinkScale = !this.geometryConfig?.crystalFamily;
         const blinkScale =
             blinkState.isBlinking && shouldApplyBlinkScale ? blinkState.scale[1] : 1.0;
         const crystalShellScale = this.crystalShellBaseScale || 2.0; // Default shell size
@@ -1801,14 +1729,7 @@ export class Core3DManager {
         // Update element material bloom thresholds to match mascot's bloom settings
         // This prevents water/fire etc from blowing out on low-threshold geometries (crystal/heart)
         if (this.elementSpawner) {
-            let elementBloomThreshold = 0.85;
-            if (
-                this.geometryType === 'crystal' ||
-                this.geometryType === 'rough' ||
-                this.geometryType === 'heart'
-            ) {
-                elementBloomThreshold = 0.35;
-            }
+            const elementBloomThreshold = this.geometryConfig?.crystalFamily ? 0.35 : 0.85;
             this.elementSpawner.setElementBloomThreshold('electricity', elementBloomThreshold);
         }
 
@@ -2153,17 +2074,9 @@ export class Core3DManager {
         // Attach to coreMesh - this adds soul to the scene
         this.crystalSoul.attachTo(this.coreMesh, this.renderer?.scene);
 
-        // Geometry-specific shell and soul sizes (permanent values)
-        let soulScale = 1.0; // Default: full size (HUGE)
-        if (this.geometryType === 'heart') {
-            this.crystalShellBaseScale = 2.4;
-            soulScale = 1.0; // Full size for heart
-        } else if (this.geometryType === 'rough') {
-            this.crystalShellBaseScale = 1.6;
-            soulScale = 1.0; // Full size for rough
-        } else if (this.geometryType === 'crystal') {
-            soulScale = 1.0; // Full size for crystal
-        }
+        // Shell and soul sizes come from the entry.
+        this.crystalShellBaseScale = this.geometryConfig?.shellScale ?? 2.0;
+        const soulScale = this.geometryConfig?.soulScale ?? 1.0;
 
         this.crystalSoul.baseScale = soulScale;
         this.crystalSoul.mesh.scale.setScalar(soulScale);
@@ -2318,12 +2231,6 @@ export class Core3DManager {
             this.elementSpawner = null;
         }
 
-        // Clean up effect manager (handles eclipse and crystal soul disposal)
-        // Note: EffectManager.dispose() removes eclipse meshes from scene internally
-        if (this.effectManager) {
-            this.effectManager.dispose();
-            this.effectManager = null;
-        }
 
         // Clean up behavior controller
         if (this.behaviorController) {

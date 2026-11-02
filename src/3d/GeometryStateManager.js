@@ -77,37 +77,21 @@ export function resetCrystal(material) {
 }
 
 /**
- * Reset material state based on geometry type
- * Dispatcher function that calls the appropriate reset function
- *
- * @param {string} geometryType - The geometry type ('moon', 'sun', 'crystal')
+ * Reset material state for the geometry being morphed away from (crystal family by flag).
+ * @param {Object} geometryConfig - THREE_GEOMETRIES entry
  * @param {THREE.ShaderMaterial} material - The material to reset
  */
-export function resetGeometryState(geometryType, material) {
-    switch (geometryType) {
-        case 'crystal':
-        case 'diamond':
-            resetCrystal(material);
-            break;
-        default:
-    }
+export function resetGeometryState(geometryConfig, material) {
+    if (geometryConfig?.crystalFamily) resetCrystal(material);
 }
 
 /**
- * Get default state for a geometry type
- * Returns an object with all default uniform values
- *
- * @param {string} geometryType - The geometry type
- * @returns {Object|null} Default uniform values or null
+ * Default uniform values for a registry entry (crystal family), or null.
+ * @param {Object} geometryConfig - THREE_GEOMETRIES entry
+ * @returns {Object|null}
  */
-export function getDefaultState(geometryType) {
-    switch (geometryType) {
-        case 'crystal':
-        case 'diamond':
-            return { ...CRYSTAL_DEFAULT_UNIFORMS };
-        default:
-            return null;
-    }
+export function getDefaultState(geometryConfig) {
+    return geometryConfig?.crystalFamily ? { ...CRYSTAL_DEFAULT_UNIFORMS } : null;
 }
 
 export default {
