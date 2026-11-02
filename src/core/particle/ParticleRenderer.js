@@ -1,3 +1,5 @@
+
+import { now as clockNow } from '../../3d/utils/clock.js';
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════
  *  ╔═○─┐ emotive
@@ -161,7 +163,7 @@ class ParticleRenderer {
                     const particlePhase =
                         (particle.x * 0.01 + particle.y * 0.01 + particle.size * 0.1) %
                         (Math.PI * 2);
-                    const time = gestureTransform.fireflyTime || Date.now() * 0.001;
+                    const time = gestureTransform.fireflyTime || clockNow() * 0.001;
                     const intensity = gestureTransform.particleGlow || 2.0;
 
                     fireflyGlow = 0.3 + Math.max(0, Math.sin(time * 3 + particlePhase)) * intensity;
@@ -170,7 +172,7 @@ class ParticleRenderer {
                 // Apply flicker effect if flicker gesture is active (now does particle shimmer)
                 if (gestureTransform && gestureTransform.flickerEffect) {
                     const particlePhase = (particle.x * 0.02 + particle.y * 0.02) % (Math.PI * 2);
-                    const time = gestureTransform.flickerTime || Date.now() * 0.001;
+                    const time = gestureTransform.flickerTime || clockNow() * 0.001;
                     const intensity = gestureTransform.particleGlow || 2.0;
 
                     fireflyGlow = 0.5 + Math.sin(time * 12 + particlePhase) * intensity * 0.5;
@@ -183,7 +185,7 @@ class ParticleRenderer {
                     const distance = Math.sqrt(dx * dx + dy * dy);
                     const normalizedDistance = distance / 200;
 
-                    const time = gestureTransform.shimmerTime || Date.now() * 0.001;
+                    const time = gestureTransform.shimmerTime || clockNow() * 0.001;
                     const wave = gestureTransform.shimmerWave || 0;
                     const intensity = gestureTransform.particleGlow || 1.2;
 

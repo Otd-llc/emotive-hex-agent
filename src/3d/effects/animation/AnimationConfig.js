@@ -18,6 +18,7 @@
  */
 
 import { getEasing } from './Easing.js';
+import { random } from '../../utils/rng.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // DEFAULT VALUES
@@ -740,7 +741,7 @@ export class AnimationConfig {
     applyVariance(base, variance) {
         if (variance === 0) return base;
         const range = base * variance;
-        return base + (Math.random() * 2 - 1) * range;
+        return base + (random() * 2 - 1) * range;
     }
 
     /**
@@ -759,7 +760,7 @@ export class AnimationConfig {
                 this.appearance.opacity.base,
                 this.appearance.opacity.variance
             ),
-            lifetimeMultiplier: 1 + (Math.random() * 2 - 1) * this.variance.lifetime,
+            lifetimeMultiplier: 1 + (random() * 2 - 1) * this.variance.lifetime,
             delayOffset: this.applyVariance(0, this.variance.delay),
         };
     }

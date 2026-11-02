@@ -1,3 +1,5 @@
+
+import { FLASH_SAFETY, safeHz } from '../../../../3d/flashSafety.js';
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════
  *  ╔═○─┐ emotive
@@ -121,7 +123,7 @@ export function buildElectricEffectGesture(config) {
                     posZ = 0;
 
                 if (cfg.jitterAmplitude > 0) {
-                    const jitterTime = time * cfg.jitterFrequency;
+                    const jitterTime = time * safeHz(cfg.jitterFrequency);
 
                     let holdMultiplier = 1.0;
                     if (cfg.holdFrames) {
@@ -175,7 +177,7 @@ export function buildElectricEffectGesture(config) {
                     rotZ = 0;
 
                 if (!isPowered && cfg.jitterAmplitude > 0) {
-                    const jitterTime = time * cfg.jitterFrequency;
+                    const jitterTime = time * safeHz(cfg.jitterFrequency);
                     const rotJitterAmt = cfg.jitterAmplitude * 2;
                     rotX = (noise1D(jitterTime * 1.3 + 200) - 0.5) * rotJitterAmt * effectStrength;
                     rotY = (noise1D(jitterTime * 1.7 + 250) - 0.5) * rotJitterAmt * effectStrength;
@@ -192,7 +194,7 @@ export function buildElectricEffectGesture(config) {
                 // SCALE
                 // ═══════════════════════════════════════════════════════════════
                 let scale = 1.0;
-                const scaleTime = time * cfg.scaleFrequency;
+                const scaleTime = time * safeHz(cfg.scaleFrequency);
 
                 if (cfg.scalePulse) {
                     const breathe = Math.sin(scaleTime * Math.PI * 2) * 0.5 + 0.5;
@@ -210,10 +212,13 @@ export function buildElectricEffectGesture(config) {
                 // ═══════════════════════════════════════════════════════════════
                 // GLOW
                 // ═══════════════════════════════════════════════════════════════
-                const flickerTime = time * cfg.glowFlickerRate;
+                const flickerTime = time * safeHz(cfg.glowFlickerRate);
                 let flickerValue;
 
-                if (isPowered) {
+                if (FLASH_SAFETY.enabled) {
+                    // Flash-safe: one smooth swell per 1/MAX_FLICKER_HZ s, no harmonics or bursts.
+                    flickerValue = Math.sin(flickerTime * Math.PI * 2) * 0.3 + 0.7;
+                } else if (isPowered) {
                     flickerValue = Math.sin(flickerTime * Math.PI * 2) * 0.3 + 0.7;
                     if (cfg.sparkBursts && hash(Math.floor(time * 10)) < cfg.sparkProbability) {
                         flickerValue = 1.0;

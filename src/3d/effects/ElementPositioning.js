@@ -21,6 +21,7 @@
 
 import * as THREE from 'three';
 import { getModelOrientation } from './ElementSizing.js';
+import { random } from '../utils/rng.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // SURFACE SAMPLING CONSTANTS
@@ -204,7 +205,7 @@ export function sampleSurfacePoints(
         const numClusters = Math.max(1, Math.floor(count * (1 - clustering) * 0.5));
         for (let c = 0; c < numClusters && candidates.length > 0; c++) {
             // Pick from top candidates
-            const idx = Math.floor(Math.random() * Math.min(candidates.length, CLUSTER_TOP_CANDIDATES));
+            const idx = Math.floor(random() * Math.min(candidates.length, CLUSTER_TOP_CANDIDATES));
             clusterCenters.push(candidates[idx].position.clone());
         }
     }
@@ -267,7 +268,7 @@ export function sampleSurfacePoints(
                 if (validCandidates.length > 0) {
                     // Weighted random from valid candidates
                     const totalWeight = validCandidates.reduce((sum, c) => sum + c.weight, 0);
-                    let r = Math.random() * totalWeight;
+                    let r = random() * totalWeight;
                     candidateIdx = validCandidates[0].idx;
 
                     for (const vc of validCandidates) {
@@ -359,7 +360,7 @@ export function calculateOrientation(
         : { mode: 'outward', tiltAngle: 0.2 };
 
     // Random angle for variety (used by all modes)
-    const randomAngle = Math.random() * Math.PI * 2;
+    const randomAngle = random() * Math.PI * 2;
 
     // Calculate a tangent vector perpendicular to the normal
     // This gives us a direction "along" the surface
@@ -596,12 +597,12 @@ export function calculateSurfacePosition(surfacePosition, surfaceNormal, scale, 
  * @returns {{position: THREE.Vector3, angle: number, radius: number, height: number}}
  */
 export function calculateOrbitalPosition(index, count, config) {
-    const angle = (index / count) * Math.PI * 2 + Math.random() * 0.5;
+    const angle = (index / count) * Math.PI * 2 + random() * 0.5;
     const radius =
-        config.orbitRadius.min + Math.random() * (config.orbitRadius.max - config.orbitRadius.min);
+        config.orbitRadius.min + random() * (config.orbitRadius.max - config.orbitRadius.min);
     const height =
         config.heightOffset.min +
-        Math.random() * (config.heightOffset.max - config.heightOffset.min);
+        random() * (config.heightOffset.max - config.heightOffset.min);
 
     const position = new THREE.Vector3(Math.cos(angle) * radius, height, Math.sin(angle) * radius);
 
@@ -614,9 +615,9 @@ export function calculateOrbitalPosition(index, count, config) {
  */
 export function calculateRandomRotation() {
     return new THREE.Euler(
-        Math.random() * Math.PI,
-        Math.random() * Math.PI,
-        Math.random() * Math.PI
+        random() * Math.PI,
+        random() * Math.PI,
+        random() * Math.PI
     );
 }
 

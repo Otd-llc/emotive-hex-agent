@@ -20,6 +20,7 @@
  */
 
 import * as THREE from 'three';
+import { random } from '../utils/rng.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // GOLDEN RATIO SIZE CLASSES
@@ -300,7 +301,7 @@ export function calculateElementScale(
     overrideVariance
 ) {
     const sizeFraction = getModelSizeFraction(modelName, overrideVariance);
-    const baseScale = sizeFraction.min + Math.random() * (sizeFraction.max - sizeFraction.min);
+    const baseScale = sizeFraction.min + random() * (sizeFraction.max - sizeFraction.min);
     return baseScale * mascotRadius * scaleMultiplier;
 }
 

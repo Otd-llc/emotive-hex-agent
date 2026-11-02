@@ -36,6 +36,7 @@
 
 import { selectWeightedColor } from '../utils/colorUtils.js';
 import { PHYSICS } from '../config/physics.js';
+import { now as clockNow } from '../../../3d/utils/clock.js';
 
 /**
  * Initialize burst behavior for a particle
@@ -148,7 +149,7 @@ export function updateBurst(particle, dt, _centerX, _centerY) {
     // For suspicion, add a subtle scanning motion
     if (data.isSuspicion) {
         // Add a very subtle side-to-side drift
-        const time = Date.now() * 0.001;
+        const time = clockNow() * 0.001;
         particle.vx += Math.sin(time * 2 + particle.id) * 0.01 * dt;
     }
 

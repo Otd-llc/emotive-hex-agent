@@ -74,6 +74,7 @@ import {
 
 // Surface utilities from spawn-modes
 import { parseSurfaceConfig } from './spawn-modes/SurfaceMode.js';
+import { random } from '../utils/rng.js';
 
 // RadialBurst utilities from spawn-modes
 import {
@@ -700,7 +701,7 @@ export class ElementInstancedSpawner {
         const availableModels = models || Array.from(merged.modelMap.keys());
 
         for (let i = 0; i < actualCount; i++) {
-            const modelName = availableModels[Math.floor(Math.random() * availableModels.length)];
+            const modelName = availableModels[Math.floor(random() * availableModels.length)];
             const modelIndex = this._resolveModelIndex(merged, modelName) ?? 0;
 
             const scaleMultiplier = elementConfig?.scaleMultiplier || DEFAULT_SCALE_MULTIPLIER;
@@ -756,7 +757,7 @@ export class ElementInstancedSpawner {
             case 'orbit': {
                 // Circular orbit around mascot
                 const angle = (index / total) * Math.PI * 2;
-                const height = (Math.random() - 0.5) * this.mascotRadius;
+                const height = (random() - 0.5) * this.mascotRadius;
                 pos.set(Math.cos(angle) * radius, height, Math.sin(angle) * radius);
                 break;
             }
@@ -775,8 +776,8 @@ export class ElementInstancedSpawner {
             case 'scattered':
             case 'scatter': {
                 // Random scatter around mascot
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(2 * Math.random() - 1);
+                const theta = random() * Math.PI * 2;
+                const phi = Math.acos(2 * random() - 1);
                 pos.set(
                     Math.sin(phi) * Math.cos(theta) * radius,
                     Math.sin(phi) * Math.sin(theta) * radius,
@@ -805,9 +806,9 @@ export class ElementInstancedSpawner {
 
         // Random rotation for most patterns (use shared _temp.euler to avoid allocation)
         _temp.euler.set(
-            Math.random() * Math.PI * 2,
-            Math.random() * Math.PI * 2,
-            Math.random() * Math.PI * 2
+            random() * Math.PI * 2,
+            random() * Math.PI * 2,
+            random() * Math.PI * 2
         );
         quat.setFromEuler(_temp.euler);
 
@@ -1928,7 +1929,7 @@ export class ElementInstancedSpawner {
             const sample = surfacePoints[i];
 
             // Select model
-            const modelName = availableModels[Math.floor(Math.random() * availableModels.length)];
+            const modelName = availableModels[Math.floor(random() * availableModels.length)];
             const modelIndex = this._resolveModelIndex(merged, modelName);
             if (modelIndex === undefined) continue;
 

@@ -13,6 +13,7 @@
 
 import { BaseSpawnMode } from './BaseSpawnMode.js';
 import { normalizeOrientation } from './AxisTravelMode.js';
+import { random } from '../../utils/rng.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STATIC UTILITY FUNCTIONS - Used by ElementInstancedSpawner
@@ -234,26 +235,26 @@ export class OrbitMode extends BaseSpawnMode {
      */
     positionElement(mesh, config, index, totalCount = 1) {
         // Distribute elements evenly with slight randomness
-        const angle = (index / totalCount) * Math.PI * 2 + Math.random() * 0.5;
+        const angle = (index / totalCount) * Math.PI * 2 + random() * 0.5;
 
         // Random radius within range
         const radius =
             config.orbitRadius.min +
-            Math.random() * (config.orbitRadius.max - config.orbitRadius.min);
+            random() * (config.orbitRadius.max - config.orbitRadius.min);
 
         // Random height within range
         const height =
             config.heightOffset.min +
-            Math.random() * (config.heightOffset.max - config.heightOffset.min);
+            random() * (config.heightOffset.max - config.heightOffset.min);
 
         // Set position
         mesh.position.set(Math.cos(angle) * radius, height, Math.sin(angle) * radius);
 
         // Random rotation
         mesh.rotation.set(
-            Math.random() * Math.PI,
-            Math.random() * Math.PI,
-            Math.random() * Math.PI
+            random() * Math.PI,
+            random() * Math.PI,
+            random() * Math.PI
         );
 
         // Store orbit data on mesh for update loop
@@ -262,7 +263,7 @@ export class OrbitMode extends BaseSpawnMode {
         mesh.userData.heightOffset = height;
         mesh.userData.rotationSpeed =
             config.rotationSpeed.min +
-            Math.random() * (config.rotationSpeed.max - config.rotationSpeed.min);
+            random() * (config.rotationSpeed.max - config.rotationSpeed.min);
 
         // Mark spawn mode
         mesh.userData.spawnModeType = 'orbit';

@@ -29,6 +29,7 @@
  */
 
 import * as THREE from 'three';
+import { safeHz } from '../../flashSafety.js';
 
 /**
  * Interpolate between values based on parameter
@@ -88,7 +89,8 @@ export function createElectricMaterial(options = {}) {
             uArcFrequency: { value: arcFrequency },
             uBranchCount: { value: branchCount },
             uArcThickness: { value: arcThickness },
-            uFlickerRate: { value: flickerRate },
+            uFlickerRate: { value: safeHz(flickerRate) },
+            uSparkHz: { value: safeHz(15.0) },
             uOpacity: { value: opacity },
             uTime: { value: 0 },
             uCharge: { value: charge },
@@ -126,6 +128,7 @@ export function createElectricMaterial(options = {}) {
             uniform float uBranchCount;
             uniform float uArcThickness;
             uniform float uFlickerRate;
+            uniform float uSparkHz;
             uniform float uOpacity;
             uniform float uTime;
             uniform float uCharge;
@@ -303,7 +306,7 @@ export function createElectricMaterial(options = {}) {
 
                             // Irregular flicker timing
                             float flickerSeed = dot(cellId, vec3(127.1, 311.7, 74.7));
-                            float flicker = step(0.75, fract(sin(time * 15.0 + flickerSeed) * 43758.5453));
+                            float flicker = step(0.75, fract(sin(floor(time * uSparkHz) * 15.0 + flickerSeed) * 43758.5453));
 
                             spark += smoothstep(0.12, 0.0, d) * flicker;
                         }
@@ -355,7 +358,8 @@ export function createElectricMaterial(options = {}) {
                 // ═══════════════════════════════════════════════════════════════
                 // FLICKER - Electrical pulsing
                 // ═══════════════════════════════════════════════════════════════
-                float flickerTime = uTime * uFlickerRate * 0.5;
+                // Time slots (uFlickerRate per second), not per frame; flash safety caps the rate.
+                float flickerTime = floor(uTime * uFlickerRate);
                 float flicker = 0.7 + 0.3 * step(0.5, fract(sin(flickerTime * 11.3) * 43758.5453));
                 lightning *= flicker;
 
@@ -427,7 +431,8 @@ export function setElectricCharge(material, charge) {
     u.uArcFrequency.value = lerp(0.5, 8.0, charge);
     u.uBranchCount.value = Math.floor(lerp(2, 12, charge));
     u.uArcThickness.value = lerp(0.01, 0.04, charge);
-    u.uFlickerRate.value = lerp(4.0, 20.0, charge);
+    u.uFlickerRate.value = safeHz(lerp(4.0, 20.0, charge));
+    u.uSparkHz.value = safeHz(15.0);
     u.uCharge.value = charge;
 }
 

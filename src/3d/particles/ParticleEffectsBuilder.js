@@ -1,3 +1,5 @@
+
+import { now as clockNow } from '../utils/clock.js';
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════
  *  ╔═○─┐ emotive
@@ -90,7 +92,7 @@ export class ParticleEffectsBuilder {
 
         return {
             fireflyEffect: true,
-            fireflyTime: Date.now() * 0.001, // Convert to seconds
+            fireflyTime: clockNow() * 0.001, // Convert to seconds
             particleGlow: config.particleGlow || 2.0,
             centerX,
             centerY,
@@ -110,7 +112,7 @@ export class ParticleEffectsBuilder {
 
         return {
             flickerEffect: true,
-            flickerTime: Date.now() * 0.001,
+            flickerTime: clockNow() * 0.001,
             particleGlow: config.particleGlow || 2.0,
             centerX,
             centerY,
@@ -131,7 +133,7 @@ export class ParticleEffectsBuilder {
 
         return {
             shimmerEffect: true,
-            shimmerTime: Date.now() * 0.001,
+            shimmerTime: clockNow() * 0.001,
             shimmerWave: progress * Math.PI * 2, // Wave phase based on progress
             particleGlow: config.particleGlow || 1.2,
             centerX,

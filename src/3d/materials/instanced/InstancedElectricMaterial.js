@@ -33,6 +33,7 @@
 import * as THREE from 'three';
 import { CORE_NOISE_GLSL } from '../../shaders/noise.glsl.js';
 import { getSurface, onSurfaceChange } from '../surface.js';
+import { safeHz, safeFlashEvents } from '../../flashSafety.js';
 import {
     INSTANCED_ATTRIBUTES_VERTEX,
     INSTANCED_ATTRIBUTES_FRAGMENT,
@@ -90,7 +91,7 @@ function lerp(a, b, t) {
 function deriveElectricParameters(charge, overrides = {}) {
     return {
         intensity: overrides.intensity ?? lerp(1.0, 4.0, charge),
-        flickerSpeed: overrides.flickerSpeed ?? lerp(4.0, 16.0, charge),
+        flickerSpeed: safeHz(overrides.flickerSpeed ?? lerp(4.0, 16.0, charge)),
         flickerAmount: overrides.flickerAmount ?? lerp(0.1, 0.4, charge),
         sparkDensity: overrides.sparkDensity ?? lerp(0.2, 0.8, charge),
     };
@@ -452,8 +453,10 @@ void main() {
     float flickerTime = effectiveTime * uFlickerSpeed * 0.5;
 
     // Multi-frequency flicker for irregular pulsing
-    float f1 = step(0.5, fract(sin(flickerTime * 11.3 + flickerPhase) * 43758.5453));
-    float f2 = step(0.65, fract(sin(flickerTime * 7.7 + flickerPhase * 1.3) * 43758.5453)) * 0.5;
+    // Time slots (uFlickerSpeed per second), not per frame: the rate is what flash safety caps.
+    float fSlot = floor(flickerTime * 2.0);
+    float f1 = step(0.5, fract(sin(fSlot * 11.3 + flickerPhase) * 43758.5453));
+    float f2 = step(0.65, fract(sin(fSlot * 7.7 + flickerPhase * 1.3) * 43758.5453)) * 0.5;
     float flicker = (1.0 - uFlickerAmount) + uFlickerAmount * max(f1, f2);
 
     lightning *= flicker;
@@ -731,7 +734,8 @@ export function setInstancedElectricCutout(material, config) {
  */
 export function setFlash(material, config) {
     if (!material) return;
-    material.userData.flashConfig = config;
+    const durationMs = material.userData?.gestureDuration ?? 1200;
+    material.userData.flashConfig = config?.events ? { ...config, events: safeFlashEvents(config.events, durationMs) } : config;
     if (material.uniforms?.uFlashIntensity) {
         material.uniforms.uFlashIntensity.value = 0;
     }

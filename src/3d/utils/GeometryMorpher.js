@@ -1,3 +1,5 @@
+
+import { now as clockNow } from './clock.js';
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════
  *  ╔═○─┐ emotive
@@ -75,7 +77,7 @@ export class GeometryMorpher {
                 const _shrinkDuration = duration * 0.5; // Half duration for shrink (reserved for future optimization)
 
                 // Reset to shrink phase with current scale as starting point
-                this.morphStartTime = Date.now();
+                this.morphStartTime = clockNow();
                 this.morphDuration = duration;
                 // Map current scale back to progress (inverse of shrink calculation)
                 // scale = 1 - (1-min) * (progress*2)^2, so progress = sqrt((1-scale)/(1-min)) / 2
@@ -93,7 +95,7 @@ export class GeometryMorpher {
 
                 // Adjust start time so animation continues from current visual state
                 const elapsedEquivalent = inverseProgress * duration;
-                this.morphStartTime = Date.now() - elapsedEquivalent;
+                this.morphStartTime = clockNow() - elapsedEquivalent;
 
                 return true;
             }
@@ -102,7 +104,7 @@ export class GeometryMorpher {
         // Start fresh transition (no interruption)
         this.currentGeometryType = currentType;
         this.targetGeometryType = targetType;
-        this.morphStartTime = Date.now();
+        this.morphStartTime = clockNow();
         this.morphDuration = duration;
         this.morphProgress = 0;
         this.visualProgress = 0;
@@ -142,7 +144,7 @@ export class GeometryMorpher {
         // Start grow-in transition (just the grow phase, no shrink)
         this.currentGeometryType = geometryType;
         this.targetGeometryType = geometryType; // Same geometry
-        this.morphStartTime = Date.now();
+        this.morphStartTime = clockNow();
         this.morphDuration = duration;
         this.morphProgress = 0;
         this.visualProgress = 0;
@@ -161,7 +163,7 @@ export class GeometryMorpher {
     pauseAtSwap() {
         if (this.isTransitioning && !this.isPausedAtSwap) {
             this.isPausedAtSwap = true;
-            this.pausedAtTime = Date.now();
+            this.pausedAtTime = clockNow();
         }
     }
 
@@ -171,7 +173,7 @@ export class GeometryMorpher {
     resumeFromSwap() {
         if (this.isPausedAtSwap) {
             // Adjust start time so morph continues from where it was
-            const pauseDuration = Date.now() - this.pausedAtTime;
+            const pauseDuration = clockNow() - this.pausedAtTime;
             this.morphStartTime += pauseDuration;
             this.isPausedAtSwap = false;
             this.pausedAtTime = 0;
@@ -205,7 +207,7 @@ export class GeometryMorpher {
         }
 
         // Calculate progress
-        const elapsed = Date.now() - this.morphStartTime;
+        const elapsed = clockNow() - this.morphStartTime;
         const rawProgress = Math.min(elapsed / this.morphDuration, 1.0);
 
         // Apply easing — easeInOutCubic + per-phase quadratic already

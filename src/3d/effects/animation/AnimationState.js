@@ -1,3 +1,7 @@
+
+import { random } from '../../utils/rng.js';
+import { hash2 } from '../../utils/rng.js';
+import { safeHz } from '../../flashSafety.js';
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════
  *  ╔═○─┐ emotive
@@ -414,24 +418,27 @@ export class AnimationState {
         // FLICKER: Opacity variation
         if (hold.flicker) {
             const f = hold.flicker;
+            const rate = safeHz(f.rate);
             switch (f.pattern) {
                 case 'sine': {
-                    const phase = time * f.rate * Math.PI * 2;
+                    const phase = time * rate * Math.PI * 2;
                     this.flickerValue = 1 + Math.sin(phase) * f.intensity;
                     break;
                 }
                 case 'square': {
-                    const phase = (time * f.rate) % 1;
+                    const phase = (time * rate) % 1;
                     this.flickerValue = phase < 0.5 ? 1 + f.intensity : 1 - f.intensity;
                     break;
                 }
                 case 'random':
-                default:
-                    // Random flicker with some persistence
-                    if (Math.random() < f.rate * deltaTime) {
-                        this.flickerValue = 1 + (Math.random() * 2 - 1) * f.intensity;
-                    }
+                default: {
+                    // Time-based (not frame-based): one value per 1/rate s slot, hashed from
+                    // this element's seed, so 60 Hz and 120 Hz see the same flicker.
+                    if (this._flickerSeed === undefined) this._flickerSeed = (random() * 2 ** 31) | 0;
+                    const slot = Math.floor(time * rate);
+                    this.flickerValue = 1 + (hash2(this._flickerSeed, slot) * 2 - 1) * f.intensity;
                     break;
+                }
             }
             opacityMod *= this.flickerValue;
         }
@@ -441,18 +448,18 @@ export class AnimationState {
             const e = hold.emissive;
             switch (e.pattern) {
                 case 'sine': {
-                    const phase = time * e.frequency * Math.PI * 2;
+                    const phase = time * safeHz(e.frequency) * Math.PI * 2;
                     const wave = (Math.sin(phase) + 1) / 2; // 0-1
                     this.emissive = e.min + wave * (e.max - e.min);
                     break;
                 }
                 case 'sawtooth': {
-                    const phase = (time * e.frequency) % 1;
+                    const phase = (time * safeHz(e.frequency)) % 1;
                     this.emissive = e.min + phase * (e.max - e.min);
                     break;
                 }
                 case 'pulse': {
-                    const phase = (time * e.frequency) % 1;
+                    const phase = (time * safeHz(e.frequency)) % 1;
                     this.emissive = phase < e.dutyCycle ? e.max : e.min;
                     break;
                 }
@@ -471,9 +478,9 @@ export class AnimationState {
             const increment = (d.distance / gestureDurationSec) * deltaTime;
 
             // Add noise if configured
-            const noiseX = d.noise > 0 ? (Math.random() - 0.5) * d.noise * increment : 0;
-            const noiseY = d.noise > 0 ? (Math.random() - 0.5) * d.noise * increment : 0;
-            const noiseZ = d.noise > 0 ? (Math.random() - 0.5) * d.noise * increment : 0;
+            const noiseX = d.noise > 0 ? (random() - 0.5) * d.noise * increment : 0;
+            const noiseY = d.noise > 0 ? (random() - 0.5) * d.noise * increment : 0;
+            const noiseZ = d.noise > 0 ? (random() - 0.5) * d.noise * increment : 0;
 
             switch (d.direction) {
                 case 'outward':
@@ -524,9 +531,9 @@ export class AnimationState {
                     this.driftOffset.z += noiseZ;
                     break;
                 case 'random':
-                    this.driftOffset.x += (Math.random() - 0.5) * increment * 2;
-                    this.driftOffset.y += (Math.random() - 0.5) * increment * 2;
-                    this.driftOffset.z += (Math.random() - 0.5) * increment * 2;
+                    this.driftOffset.x += (random() - 0.5) * increment * 2;
+                    this.driftOffset.y += (random() - 0.5) * increment * 2;
+                    this.driftOffset.z += (random() - 0.5) * increment * 2;
                     break;
             }
 

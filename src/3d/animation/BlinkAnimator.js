@@ -16,6 +16,7 @@
  */
 
 import { getEmotion } from '../../core/emotions/index.js';
+import { now as clockNow } from '../utils/clock.js';
 
 export class BlinkAnimator {
     constructor(geometryConfig, _options = {}) {
@@ -86,7 +87,7 @@ export class BlinkAnimator {
             return this.getBlinkState();
         } else {
             // Wait for next blink
-            if (Date.now() >= this.nextBlinkTime) {
+            if (clockNow() >= this.nextBlinkTime) {
                 this.startBlink();
                 return this.getBlinkState();
             }
@@ -112,7 +113,7 @@ export class BlinkAnimator {
         this.isBlinking = false;
         this.blinkTimer = 0;
         this.blinkProgress = 0;
-        this.nextBlinkTime = Date.now() + this.getRandomBlinkTime();
+        this.nextBlinkTime = clockNow() + this.getRandomBlinkTime();
     }
 
     /**
@@ -228,7 +229,7 @@ export class BlinkAnimator {
      */
     resume() {
         this.enabled = true;
-        this.nextBlinkTime = Date.now() + this.getRandomBlinkTime();
+        this.nextBlinkTime = clockNow() + this.getRandomBlinkTime();
     }
 
     /**

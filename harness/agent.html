@@ -99,12 +99,13 @@ const H = {
     mascot: null,
     events: [],
     /**
-     * @param {{ size?: number, surface?: 'dark'|'light', shape?: string, preset?: string, debugShaders?: boolean }} [o]
+     * @param {{ size?: number, surface?: 'dark'|'light', shape?: string, preset?: string, debugShaders?: boolean, debugStep?: boolean, field?: string }} [o]
      */
     async mount(o = {}) {
         const size = o.size ?? 225;
         const surface = o.surface ?? 'dark';
         document.body.classList.toggle('light', surface === 'light');
+        document.body.style.background = o.field ?? '';
         stage.style.width = stage.style.height = size + 'px';
         H.mountedAt = performance.now();
         const m = new EmotiveMascot3D({
@@ -112,6 +113,8 @@ const H = {
             coreGeometry: o.shape ?? 'hexgem',
             surface,
             debugShaders: o.debugShaders ?? params.has('debugShaders'),
+            debugStep: o.debugStep === true,
+            cameraDistance: o.cameraDistance,
         });
         H.events = [];
         for (const ev of ['emotion:change', 'gesture:trigger', 'shape:morph', 'sss:presetChanged']) {
@@ -175,6 +178,35 @@ const H = {
     /** pending engine timers / rAFs (attributed by stack to the engine or three) */
     pending() {
         return { timers: [...probe.timers.values()].map(t => t.kind + ' ' + t.stack.split('\n').slice(1, 4).join(' | ')), rafs: probe.rafs.size };
+    },
+    /**
+     * Step `frames` frames of `dtMs` (step mode) and composite each onto the page field in a
+     * 2D canvas; `onFrame(rgba, tMs, k)` sees every frame; `actions` = [[tMs, fn]] run when
+     * the virtual time reaches tMs. Microtasks flush between frames (async spawns land).
+     */
+    async stepFrames({ dtMs, frames, actions = [], field, onFrame, crop = null }) {
+        const m = H.mascot;
+        const src = m.webglCanvas;
+        const c = H._cap ?? (H._cap = document.createElement('canvas'));
+        c.width = src.width;
+        c.height = src.height;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        const todo = [...actions].sort((a, b) => a[0] - b[0]);
+        for (let k = 0; k < frames; k++) {
+            const t = k * dtMs;
+            while (todo.length && todo[0][0] <= t) todo.shift()[1]();
+            m.__step(dtMs);
+            g.globalCompositeOperation = 'copy';
+            g.fillStyle = field;
+            g.fillRect(0, 0, c.width, c.height);
+            g.globalCompositeOperation = 'source-over';
+            g.drawImage(src, 0, 0);
+            const r = crop ?? { x: 0, y: 0, w: c.width, h: c.height };
+            onFrame?.(g.getImageData(r.x, r.y, r.w, r.h).data, t, k);
+            await null;
+            await new Promise(r => queueMicrotask(r));
+        }
+        return c;
     },
     stageRect() { const r = stage.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; },
 };

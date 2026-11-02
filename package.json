@@ -31,6 +31,7 @@
         "gate:gl": "node harness/gates/gl.mjs",
         "gate:teardown": "node harness/gates/teardown.mjs",
         "gate:states": "node harness/gates/states.mjs",
+        "gate:flash": "node harness/gates/flash.mjs",
         "harness": "node harness/serve.mjs"
     },
     "peerDependencies": {

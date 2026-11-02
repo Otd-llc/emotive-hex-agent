@@ -1,3 +1,5 @@
+
+import { now as clockNow } from '../utils/clock.js';
 /**
  * BreathingPhaseManager - Imperative breathing phase animation
  *
@@ -48,7 +50,7 @@ export class BreathingPhaseManager {
 
         // Store current scale as starting point
         this._startScale = this._currentScale;
-        this._startTime = performance.now();
+        this._startTime = clockNow();
         this._duration = duration * 1000; // Convert to ms
         this._phase = phase;
 
@@ -105,7 +107,7 @@ export class BreathingPhaseManager {
             return this._currentScale;
         }
 
-        const now = performance.now();
+        const now = clockNow();
         const elapsed = now - this._startTime;
 
         // Calculate progress (0 to 1)

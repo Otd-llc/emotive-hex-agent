@@ -19,6 +19,7 @@
  */
 
 import * as THREE from 'three';
+import { random } from '../utils/rng.js';
 
 // Constants
 const POOL_SIZE = 64; // Max instances per element type (16 elements × 4 slots each)
@@ -122,7 +123,7 @@ export class ElementInstancePool {
         // Also used as arc phase for vortex effects (when arcPhase > 0 is passed to spawn)
         this.randomSeedArray = new Float32Array(count);
         for (let i = 0; i < count; i++) {
-            this.randomSeedArray[i] = Math.random();
+            this.randomSeedArray[i] = random();
         }
         this.randomSeedAttr = new THREE.InstancedBufferAttribute(this.randomSeedArray, 1);
         this.mesh.geometry.setAttribute('aRandomSeed', this.randomSeedAttr);
@@ -237,7 +238,7 @@ export class ElementInstancePool {
             this.randomSeedArray[slot] = base + attrs.arcPhase;
         } else {
             // Clear any stale relay encoding from previous gesture's use of this slot
-            this.randomSeedArray[slot] = Math.random();
+            this.randomSeedArray[slot] = random();
         }
         this.randomSeedAttr.needsUpdate = true;
 

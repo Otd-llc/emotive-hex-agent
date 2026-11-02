@@ -20,6 +20,9 @@ import { ResizeObserverManager } from './managers/ResizeObserverManager.js';
 import { setSurface } from './materials/surface.js';
 import { FRAME_TIMING, ACCESSIBILITY } from '../core/config/defaults.js';
 import { THREE_GEOMETRIES } from './geometries/ThreeGeometries.js';
+import { enterStepMode, exitStepMode, advance as advanceClock } from './utils/clock.js';
+import { seed as seedRng } from './utils/rng.js';
+import { FLASH_SAFETY } from './flashSafety.js';
 
 /** Geometry names morphTo() accepts. */
 const VALID_GEOMETRIES = Object.keys(THREE_GEOMETRIES);
@@ -240,6 +243,44 @@ export class EmotiveMascot3D {
         if (!this.core3D) return;
         await this.core3D.waitUntilReady();
         await this.core3D.whenVisible();
+    }
+
+    /**
+     * TEST-ONLY deterministic frame hook (needs `debugStep: true` in the config): stops the
+     * rAF loop, switches the engine clock to virtual time, advances it by `dtMs` and draws
+     * exactly one frame. Used by the flash gate and the capture tool.
+     * @param {number} dtMs
+     */
+    __step(dtMs) {
+        if (!this.config?.debugStep) throw new Error('[emotive-hex-agent] __step needs { debugStep: true }');
+        if (this.isRunning) this.stop();
+        enterStepMode();
+        advanceClock(dtMs);
+        if (!this.core3D) return;
+        this.core3D.render(dtMs);
+        if (!this._canvasAppended && this.container && this.webglCanvas) {
+            this.container.appendChild(this.webglCanvas);
+            this._canvasAppended = true;
+        }
+    }
+
+    /**
+     * TEST-ONLY: seed the engine RNG (null = Math.random again). Needs `debugStep: true`.
+     * @param {number|null} n
+     */
+    __seed(n) {
+        if (!this.config?.debugStep) throw new Error('[emotive-hex-agent] __seed needs { debugStep: true }');
+        seedRng(n);
+    }
+
+    /**
+     * TEST-ONLY: switch the flash-safety caps off (the flash gate's planted fault: stock
+     * flicker rates). Needs `debugStep: true`; destroy() switches them back on.
+     * @param {boolean} on
+     */
+    __flashSafety(on) {
+        if (!this.config?.debugStep) throw new Error('[emotive-hex-agent] __flashSafety needs { debugStep: true }');
+        FLASH_SAFETY.enabled = on !== false;
     }
 
     /** Stop the animation loop. */
@@ -675,6 +716,11 @@ export class EmotiveMascot3D {
             this._resizeObserver = null;
         }
 
+        if (this.config?.debugStep) {
+            exitStepMode();
+            seedRng(null);
+            FLASH_SAFETY.enabled = true;
+        }
         this._destroyPromise = this.core3D ? this.core3D.destroy() : Promise.resolve();
 
         if (this.webglCanvas?.parentNode) this.webglCanvas.parentNode.removeChild(this.webglCanvas);
