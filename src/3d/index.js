@@ -32,10 +32,12 @@ export const GLOW_MIN_MS = 250;
 /** turn() never completes faster than this: a turn is a calm move, never a flick. */
 export const TURN_MIN_MS = 400;
 /**
- * An element gesture (shock, electricflourish) fired before its pool has linked waits this long
- * at most, then is dropped: a late arc for a moment that has passed reads as a glitch.
+ * An element gesture (shock, electricflourish) fired before its pool has linked is held until the
+ * pool is ready, however long a cold link takes (7-12 s and more on a cold browser). The engine
+ * cannot know when the moment has passed, so the HOST drops it: cancelQueuedGesture() once the
+ * agent has moved on (a late arc for a moment that has passed reads as a glitch).
+ * `electric:ready` is emitted once, the first frame the electric pool can draw.
  */
-export const ELEMENT_GESTURE_QUEUE_MS = 3000;
 
 /** Geometry names morphTo() accepts. */
 const VALID_GEOMETRIES = Object.keys(THREE_GEOMETRIES);
@@ -292,6 +294,7 @@ export class EmotiveMascot3D {
         enterStepMode();
         advanceClock(dtMs);
         if (!this.core3D) return;
+        if (!this._electricReadySent) this._checkElectricReady();
         if (this._queuedGesture) this._drainGestureQueue();
         this.core3D.render(dtMs);
         if (!this._canvasAppended && this.container && this.webglCanvas) {
@@ -352,6 +355,7 @@ export class EmotiveMascot3D {
         const deltaTime = Math.min(this._frameAccum, FRAME_TIMING.RENDER_DELTA_CAP);
         this._frameAccum = 0;
 
+        if (!this._electricReadySent) this._checkElectricReady();
         if (this._queuedGesture) this._drainGestureQueue();
         if (this.core3D) {
             this.core3D.render(deltaTime);
@@ -428,8 +432,9 @@ export class EmotiveMascot3D {
             return this;
         }
         // An element gesture before its pool has linked would play with no arcs: hold the latest
-        // one (it replaces any held one) and play it once the pool is ready, within
-        // ELEMENT_GESTURE_QUEUE_MS. Plain gestures never wait.
+        // one (it replaces any held one) and play it once the pool is ready, with no expiry; the
+        // host cancels it (cancelQueuedGesture) when its moment has passed. Plain gestures never
+        // wait and never cancel a held one.
         if (this.core3D && gesture.config?.spawnMode && !this._elementPoolReady()) {
             this._queuedGesture = { name: gestureName, at: clockNow() };
             this.eventManager.emit('gesture:queued', { gesture: gestureName });
@@ -444,18 +449,55 @@ export class EmotiveMascot3D {
         return !!this.core3D?.elementSpawner?.pools?.get('electricity')?.mesh;
     }
 
+    /** @returns {boolean} the electric pool has linked: shock / electricflourish play at once */
+    isElectricReady() {
+        return this._elementPoolReady();
+    }
+
+    /** @returns {string|null} the element gesture held for the pool, if any */
+    queuedGesture() {
+        return this._queuedGesture?.name ?? null;
+    }
+
     /**
-     * @private Play a held element gesture once its pool is ready; drop it once stale.
-     * Called every rendered frame.
+     * Drop a held element gesture (its moment has passed). Emits `gesture:dropped`.
+     * @param {string} [name] - only drop it if it is this gesture
+     * @returns {boolean} whether one was dropped
+     */
+    cancelQueuedGesture(name) {
+        const q = this._queuedGesture;
+        if (!q || (name !== undefined && q.name !== name)) return false;
+        this._queuedGesture = null;
+        this.eventManager?.emit('gesture:dropped', { gesture: q.name, held: clockNow() - q.at });
+        return true;
+    }
+
+    /**
+     * Subscribe to an engine event (`electric:ready`, `gesture:queued`, `gesture:trigger`,
+     * `gesture:dropped`, ...). Returns the unsubscribe function.
+     * @param {string} event
+     * @param {Function} callback
+     * @returns {() => void}
+     */
+    on(event, callback) {
+        if (this._isDestroyed()) return () => {};
+        this.eventManager.on(event, callback);
+        return () => this.eventManager?.off?.(event, callback);
+    }
+
+    /** @private Emit `electric:ready` once, the first frame the pool can draw. */
+    _checkElectricReady() {
+        if (this._electricReadySent || !this._elementPoolReady()) return;
+        this._electricReadySent = true;
+        this.eventManager.emit('electric:ready', {});
+    }
+
+    /**
+     * @private Play a held element gesture once its pool is ready. Called every rendered frame.
      */
     _drainGestureQueue() {
         const q = this._queuedGesture;
         if (!q) return;
-        if (clockNow() - q.at > ELEMENT_GESTURE_QUEUE_MS) {
-            this._queuedGesture = null;
-            this.eventManager.emit('gesture:dropped', { gesture: q.name });
-            return;
-        }
         if (!this._elementPoolReady()) return;
         this._queuedGesture = null;
         const gesture = getGesture(q.name);

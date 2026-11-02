@@ -79,12 +79,23 @@ describe('the electric pool links at mount, in the background', () => {
         await m.destroy();
     });
 
-    it('after the core link: the five GLBs load from the base path, then the pool + gem overlay link', async () => {
+    it('the five GLBs load WHILE the core links, but the pool link waits for the core link', async () => {
         fetchFixture.urls = [];
+        const { m, gl } = await mountLinked({});
+        for (let i = 0; i < 50 && calls(gl, 'compile') < coreCompiles; i++) await flush(2);
+        await flush(40);
+        for (const f of FIVE) expect(fetchFixture.urls).toContain(`/agent/${f}`);
+        expect(calls(gl, 'compile')).toBe(coreCompiles);
+        await linkCore(m);
+        for (let i = 0; i < 100 && calls(gl, 'compile') < coreCompiles + 2; i++) await flush(5);
+        expect(calls(gl, 'compile')).toBe(coreCompiles + 2);
+        await m.destroy();
+    });
+
+    it('after the core link: the pool + gem overlay link', async () => {
         const { m, gl } = await mountLinked({});
         await linkCore(m);
         for (let i = 0; i < 100 && calls(gl, 'compile') < coreCompiles + 2; i++) await flush(5);
-        for (const f of FIVE) expect(fetchFixture.urls).toContain(`/agent/${f}`);
         expect(calls(gl, 'compile')).toBe(coreCompiles + 2);
         expect(m.renderer.pendingCompileCount()).toBe(2);
         gl.settleCompiles();
@@ -103,9 +114,8 @@ describe('the electric pool links at mount, in the background', () => {
         await m.destroy();
     });
 
-    it('destroy() during the GLB loads cancels it: no pool compile, no pool', async () => {
+    it('destroy() during the GLB loads / core link cancels it: no pool compile, no pool', async () => {
         const { m, gl } = await mountLinked({});
-        await linkCore(m);
         await m.destroy();
         await flush(80);
         expect(calls(gl, 'compile')).toBeLessThanOrEqual(coreCompiles + 1); // the overlay may start

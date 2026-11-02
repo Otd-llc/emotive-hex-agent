@@ -241,6 +241,18 @@ export class EmotiveMascot3D {
     /** Express a gesture */
     express(gestureName: GestureName): EmotiveMascot3D;
 
+    /** The electric pool has linked: shock / electricflourish play at once. */
+    isElectricReady(): boolean;
+
+    /** The element gesture held until the electric pool links (no expiry), if any. */
+    queuedGesture(): string | null;
+
+    /** Drop the held element gesture (only if it is `name`, when given). Emits `gesture:dropped`. */
+    cancelQueuedGesture(name?: string): boolean;
+
+    /** Subscribe to an engine event (`electric:ready`, `gesture:queued`, `gesture:dropped`, ...). Returns unsubscribe. */
+    on(event: string, callback: (data: any) => void): () => void;
+
     /** Execute a gesture chain */
     chain(chainName: ChainPreset | string | string[]): void;
 

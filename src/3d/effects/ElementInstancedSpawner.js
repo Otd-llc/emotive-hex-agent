@@ -383,6 +383,13 @@ export class ElementInstancedSpawner {
         // program, and the resulting throw happens inside Three's own timer — outside
         // any promise chain — so the await here would never settle.
         if (this._renderer?.compileObjectAsync) {
+            // The host may hold the link until its own first-frame programs have linked
+            // (linkGate), so the GLBs load and merge early but the two links never compete.
+            if (this.linkGate) await this.linkGate;
+            if (this._disposed || !this.container) {
+                pool.dispose();
+                return null;
+            }
             await this._renderer.compileObjectAsync(pool.mesh);
 
             // Spawner may have been torn down while we waited

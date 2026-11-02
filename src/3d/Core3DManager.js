@@ -2113,8 +2113,11 @@ export class Core3DManager {
             // NOW we're fully ready for rendering
             this._ready = true;
 
-            // Link the core programs off the main thread, then the electric pool (after, so
-            // the gem appears first and the two links do not compete).
+            // Link the core programs off the main thread. The element pools start NOW (their
+            // GLBs load and merge while the core links) but their own shader link waits for
+            // the core's (linkGate), so the gem appears first and the two links do not compete.
+            if (this.elementSpawner) this.elementSpawner.linkGate = this._visiblePromise;
+            this._startElementPreloading();
             this._prelinkCore();
         } catch (error) {
             console.warn(`[Core3DManager] Async geometry load failed (instance ${this._instanceId}):`, error);
@@ -2243,7 +2246,6 @@ export class Core3DManager {
         if (this._destroyed) return;
         this._linked = true;
         this._resolveVisible();
-        this._startElementPreloading();
     }
 
     /**
@@ -2309,7 +2311,10 @@ export class Core3DManager {
             // The electric gem overlay: one material for the instance's lifetime, linked now.
             if (this._preloadElements.includes('electricity') && this.renderer?.coreMesh) {
                 const overlay = this._getElectricOverlay(this.renderer.coreMesh);
-                this.renderer.compileObjectAsync(overlay);
+                // After the core's link, like the pools (see linkGate).
+                this._visiblePromise.then(() => {
+                    if (!this._destroyed) this.renderer?.compileObjectAsync(overlay);
+                });
             }
         }
 
