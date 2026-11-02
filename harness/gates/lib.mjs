@@ -1,13 +1,24 @@
 /**
  * Shared gate plumbing: exit codes, server + system Chrome, console capture, pixel stats.
- * Exit codes: 0 pass, 1 fail, 2 infra.
+ * Exit codes: 0 pass, 1 fail, 2 infra, 3 skip (no WebGL 2 in the engine under test).
+ * Browser: --browser=chromium (system Chrome, default) | webkit | firefox (playwright builds).
  */
-import { chromium } from 'playwright-core';
+import { chromium, webkit, firefox } from 'playwright-core';
 import { startServer, chromePath } from '../serve.mjs';
 
 export const PASS = 0;
 export const FAIL = 1;
 export const INFRA = 2;
+/** The engine under test has no WebGL 2 (the agent's fallback path): SKIP, never PASS. */
+export const SKIP = 3;
+
+/** Browser engine: --browser=<chromium|webkit|firefox> or BROWSER env; default chromium. */
+export function parseBrowser(argv = process.argv.slice(2)) {
+    const a = argv.find(x => x.startsWith('--browser='));
+    const b = (a ? a.slice(10) : process.env.BROWSER) || 'chromium';
+    if (!['chromium', 'webkit', 'firefox'].includes(b)) throw new Error(`unknown browser ${b}`);
+    return b;
+}
 
 /** Parse --plant-<name> (at most one). */
 export function parsePlant(argv = process.argv.slice(2)) {
@@ -17,7 +28,7 @@ export function parsePlant(argv = process.argv.slice(2)) {
 }
 
 /** Lines that the GL gate counts, unfiltered. */
-export const GL_LINE = /\[\.WebGL-|GL_INVALID|WebGL: [A-Z_]+|too many errors/i;
+export const GL_LINE = /\[\.WebGL-|GL_INVALID|WebGL: [A-Z_]+|WebGL warning|WebGL error|too many errors/i;
 
 /**
  * Run `body` with a served harness + system Chrome. Infra failures exit 2.
@@ -25,18 +36,31 @@ export const GL_LINE = /\[\.WebGL-|GL_INVALID|WebGL: [A-Z_]+|too many errors/i;
  * @param {{ plant?: string|null, pagePlant?: string|null }} opts
  * @param {(ctx: {browser, server, open: Function}) => Promise<{ok: boolean, report: object}>} body
  */
+const BROWSER = parseBrowser();
+
 export async function runGate(name, opts, body) {
     const t0 = Date.now();
     let server, browser;
     try {
         server = await startServer({ plant: opts.plant ?? null });
-        const exe = chromePath();
-        if (!exe) throw new Error('system Chrome not found (set CHROME_PATH)');
-        browser = await chromium.launch({
-            executablePath: exe,
-            headless: true,
-            args: ['--use-angle=d3d11', '--enable-unsafe-swiftshader=false', '--ignore-gpu-blocklist'],
-        });
+        if (BROWSER === 'chromium') {
+            const exe = chromePath();
+            if (!exe) throw new Error('system Chrome not found (set CHROME_PATH)');
+            browser = await chromium.launch({
+                executablePath: exe,
+                headless: true,
+                args: [
+                    '--use-angle=d3d11',
+                    '--enable-unsafe-swiftshader=false',
+                    '--ignore-gpu-blocklist',
+                    // NO_WEBGL2=1: demonstrate the fallback leg (must report SKIP, never PASS)
+                    ...(process.env.NO_WEBGL2 ? ['--disable-webgl2'] : []),
+                ],
+            });
+        } else {
+            // playwright's own WebKit / Firefox builds
+            browser = await (BROWSER === 'webkit' ? webkit : firefox).launch({ headless: true });
+        }
     } catch (e) {
         console.error(`[${name}] INFRA: ${e.message}`);
         await server?.close();
@@ -67,10 +91,15 @@ export async function runGate(name, opts, body) {
             await p.close();
             return r;
         })();
-        if (!gpu) throw Object.assign(new Error('no WebGL 2 in this Chrome'), { infra: true });
-        const { ok, report } = await body({ browser, server, open });
-        code = ok ? PASS : FAIL;
-        console.log(JSON.stringify({ gate: name, plant: opts.plant ?? opts.pagePlant ?? null, result: ok ? 'PASS' : 'FAIL', gpu, seconds: Math.round((Date.now() - t0) / 1000), ...report }, null, 2));
+        if (!gpu) {
+            // The agent falls back to a still glyph without WebGL 2: nothing to gate here.
+            console.log(JSON.stringify({ gate: name, browser: BROWSER, result: 'SKIP', reason: 'no WebGL 2 (fallback path)' }));
+            code = SKIP;
+        } else {
+            const { ok, report } = await body({ browser, server, open, browserName: BROWSER });
+            code = ok ? PASS : FAIL;
+            console.log(JSON.stringify({ gate: name, browser: BROWSER, plant: opts.plant ?? opts.pagePlant ?? null, result: ok ? 'PASS' : 'FAIL', gpu, seconds: Math.round((Date.now() - t0) / 1000), ...report }, null, 2));
+        }
     } catch (e) {
         console.error(`[${name}] ${e.infra ? 'INFRA' : 'INFRA (unexpected)'}: ${e.stack || e.message}`);
         code = INFRA;

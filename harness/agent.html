@@ -83,6 +83,7 @@ window.addEventListener('error', e => probe.errors.push(String(e.message || e.er
 // Main-thread long tasks (a synchronous shader link shows up here): [startMs, durationMs].
 probe.longTasks = [];
 try {
+    if (!PerformanceObserver.supportedEntryTypes?.includes('longtask')) throw new Error('no longtask');
     new PerformanceObserver(l => l.getEntries().forEach(e => probe.longTasks.push([Math.round(e.startTime), Math.round(e.duration)]))).observe({ entryTypes: ['longtask'] });
 } catch { /* not supported (WebKit/Firefox): reported as null */ probe.longTasks = null; }
 window.addEventListener('unhandledrejection', e => probe.errors.push('unhandled: ' + String(e.reason && (e.reason.stack || e.reason))));

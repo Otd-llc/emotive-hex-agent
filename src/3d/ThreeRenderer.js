@@ -494,7 +494,7 @@ export class ThreeRenderer {
         } finally {
             if (!this._destroyed) gl.setRenderTarget(savedTarget);
         }
-        if (!gl.extensions.get('KHR_parallel_shader_compile') || !materials?.size) return true;
+        if (!gl.extensions.has('KHR_parallel_shader_compile') || !materials?.size) return true;
 
         const poll = { timer: null, finish: null };
         const raw = new Promise(resolve => {

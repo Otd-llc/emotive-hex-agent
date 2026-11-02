@@ -174,14 +174,13 @@ export class EmotiveMascot3D {
         if (typeof window === 'undefined') {
             throw new Error('EmotiveMascot3D.init() requires a browser environment.');
         }
-        const probeGl = document.createElement('canvas').getContext('webgl2');
-        if (!probeGl) {
+        // No throwaway probe context (it counts against the browser's context cap, and
+        // releasing it logs a context-loss warning): check the API, and let the renderer's own
+        // context creation be the real test below.
+        if (typeof WebGL2RenderingContext === 'undefined') {
             console.warn('[EmotiveMascot3D] WebGL2 is not supported in this browser');
             return this;
         }
-        // Release the probe context now; left alone it counts against the browser's live
-        // context cap until GC.
-        probeGl.getExtension('WEBGL_lose_context')?.loseContext();
 
         this.container = container;
         if (!container.style.position || container.style.position === 'static') {
@@ -197,7 +196,27 @@ export class EmotiveMascot3D {
         canvas.setAttribute('aria-label', 'Animated agent gem');
         this.webglCanvas = canvas;
 
-        this.core3D = new Core3DManager(canvas, {
+        try {
+            this.core3D = this._createCore(canvas);
+        } catch (e) {
+            console.warn('[EmotiveMascot3D] WebGL2 context could not be created', e);
+            this.core3D = null;
+            return this;
+        }
+        this._wireCore();
+
+        this._resizeObserver = new ResizeObserverManager(container, (width, height) => {
+            this.core3D?.renderer?.resize(width, height);
+        });
+
+        this._setupReducedMotionListener();
+        if (this._prefersReducedMotion) this.setReducedMotion(true);
+        return this;
+    }
+
+    /** @private */
+    _createCore(canvas) {
+        return new Core3DManager(canvas, {
             geometry: this.config.coreGeometry,
             emotion: this.config.defaultEmotion,
             enableParticles: this.config.enableParticles,
@@ -212,16 +231,6 @@ export class EmotiveMascot3D {
             debugShaders: this.config.debugShaders,
             preloadElements: this.config.preloadElements,
         });
-
-        this._wireCore();
-
-        this._resizeObserver = new ResizeObserverManager(container, (width, height) => {
-            this.core3D?.renderer?.resize(width, height);
-        });
-
-        this._setupReducedMotionListener();
-        if (this._prefersReducedMotion) this.setReducedMotion(true);
-        return this;
     }
 
     /**

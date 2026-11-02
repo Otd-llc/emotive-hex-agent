@@ -101,9 +101,15 @@ await runGate('states', { plant }, async ({ open }) => {
         await visit(shape); // hexgem -> shape
         await visit(SHAPES[0]); // shape -> hexgem
     }
+    const linesBeforeClose = consoleLines.length;
     await page.evaluate(() => H.close());
 
-    const warnings = consoleLines.filter(l => l.type === 'warning' || l.type === 'error').map(l => l.text);
+    // Our own forceContextLoss at close is expected (Firefox reports it as a warning); any
+    // other warning, or a context loss before close, still fails.
+    const warnings = consoleLines
+        .filter((l, i) => !(i >= linesBeforeClose && /WebGL context was lost/.test(l.text)))
+        .filter(l => l.type === 'warning' || l.type === 'error')
+        .map(l => l.text);
     const checks = {
         allGesturesAvailable: missing.length === 0,
         allCallsEmitted: badCalls.length === 0,
