@@ -2,8 +2,6 @@
  * EffectManager - Manages geometry-specific visual effects
  *
  * Handles lifecycle management for:
- * - SolarEclipse (sun geometry)
- * - LunarEclipse (moon geometry)
  * - CrystalSoul (crystal-type geometries)
  *
  * Extracted from Core3DManager to improve separation of concerns.
@@ -11,8 +9,6 @@
  * @module 3d/managers/EffectManager
  */
 
-import { SolarEclipse } from '../effects/SolarEclipse.js';
-import { LunarEclipse } from '../effects/LunarEclipse.js';
 import { CrystalSoul } from '../effects/CrystalSoul.js';
 
 /**
@@ -31,8 +27,6 @@ export class EffectManager {
         this.assetBasePath = assetBasePath;
 
         // Effect instances
-        this.solarEclipse = null;
-        this.lunarEclipse = null;
         this.crystalSoul = null;
 
         // State tracking
@@ -45,64 +39,23 @@ export class EffectManager {
      * @param {string} geometryType - The geometry type (sun, moon, crystal, etc.)
      * @param {Object} options - Options for initialization
      * @param {THREE.Mesh} options.coreMesh - The core mesh to attach effects to
-     * @param {Object} options.customMaterial - Custom material (for lunar eclipse)
-     * @param {number} options.sunRadius - Sun radius (for solar eclipse)
      */
     initializeForGeometry(geometryType, options = {}) {
-        const { coreMesh, customMaterial, sunRadius = 1.0 } = options;
+        void options;
         this.currentGeometryType = geometryType;
 
         // Clean up effects not needed for this geometry
         this._cleanupUnneededEffects(geometryType);
 
-        // Initialize geometry-specific effects
-        if (geometryType === 'sun') {
-            this._initSolarEclipse(sunRadius, coreMesh);
-        } else if (geometryType === 'moon') {
-            this._initLunarEclipse(customMaterial);
-        } else if (CRYSTAL_SOUL_GEOMETRIES.includes(geometryType)) {
-            // CrystalSoul is initialized separately via createCrystalSoul()
-            // because it has complex async loading requirements
-        }
     }
 
-    /**
-     * Initialize solar eclipse effect
-     * @private
-     */
-    _initSolarEclipse(sunRadius, coreMesh) {
-        if (!this.solarEclipse && this.renderer?.scene) {
-            this.solarEclipse = new SolarEclipse(this.renderer.scene, sunRadius, coreMesh);
-        }
-    }
 
-    /**
-     * Initialize lunar eclipse effect
-     * @private
-     */
-    _initLunarEclipse(customMaterial) {
-        if (!this.lunarEclipse && customMaterial) {
-            this.lunarEclipse = new LunarEclipse(customMaterial);
-        }
-    }
 
     /**
      * Clean up effects that are not needed for the current geometry
      * @private
      */
     _cleanupUnneededEffects(geometryType) {
-        // Dispose solar eclipse if not sun
-        if (geometryType !== 'sun' && this.solarEclipse) {
-            this.solarEclipse.dispose();
-            this.solarEclipse = null;
-        }
-
-        // Dispose lunar eclipse if not moon
-        if (geometryType !== 'moon' && this.lunarEclipse) {
-            this.lunarEclipse.dispose();
-            this.lunarEclipse = null;
-        }
-
         // Dispose crystal soul if not a crystal-type geometry
         if (!CRYSTAL_SOUL_GEOMETRIES.includes(geometryType) && this.crystalSoul) {
             this.crystalSoul.dispose();
@@ -225,43 +178,8 @@ export class EffectManager {
         return { shellBaseScale, soulScale };
     }
 
-    /**
-     * Set solar eclipse type
-     * @param {string} eclipseType - 'off', 'annular', or 'total'
-     * @returns {boolean} True if eclipse was set
-     */
-    setSolarEclipse(eclipseType) {
-        if (!this.solarEclipse) {
-            return false;
-        }
-        this.solarEclipse.setEclipseType(eclipseType);
-        return true;
-    }
 
-    /**
-     * Set lunar eclipse type
-     * @param {string} eclipseType - 'off', 'penumbral', 'partial', 'total'
-     * @returns {boolean} True if eclipse was set
-     */
-    setLunarEclipse(eclipseType) {
-        if (!this.lunarEclipse) {
-            return false;
-        }
-        this.lunarEclipse.setEclipseType(eclipseType);
-        return true;
-    }
 
-    /**
-     * Stop all eclipse effects
-     */
-    stopAllEclipses() {
-        if (this.solarEclipse) {
-            this.solarEclipse.setEclipseType('off');
-        }
-        if (this.lunarEclipse) {
-            this.lunarEclipse.setEclipseType('off');
-        }
-    }
 
     /**
      * Update crystal soul
@@ -275,15 +193,6 @@ export class EffectManager {
         }
     }
 
-    /**
-     * Update lunar eclipse
-     * @param {number} deltaTime - Time since last frame
-     */
-    updateLunarEclipse(deltaTime) {
-        if (this.lunarEclipse) {
-            this.lunarEclipse.update(deltaTime);
-        }
-    }
 
     /**
      * Set crystal soul effect parameters
@@ -335,43 +244,14 @@ export class EffectManager {
         return this.crystalSoul?.baseScale ?? 1.0;
     }
 
-    /**
-     * Check if solar eclipse is active
-     * @returns {boolean}
-     */
-    hasSolarEclipse() {
-        return !!this.solarEclipse;
-    }
 
-    /**
-     * Check if lunar eclipse is active
-     * @returns {boolean}
-     */
-    hasLunarEclipse() {
-        return !!this.lunarEclipse;
-    }
 
-    /**
-     * Get solar eclipse instance (for render pass)
-     * @returns {SolarEclipse|null}
-     */
-    getSolarEclipse() {
-        return this.solarEclipse;
-    }
 
     /**
      * Dispose all effects
      */
     dispose() {
-        if (this.solarEclipse) {
-            this.solarEclipse.dispose();
-            this.solarEclipse = null;
-        }
 
-        if (this.lunarEclipse) {
-            this.lunarEclipse.dispose();
-            this.lunarEclipse = null;
-        }
 
         if (this.crystalSoul) {
             this.crystalSoul.dispose();

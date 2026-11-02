@@ -9,8 +9,6 @@ import * as THREE from 'three';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { createMoon } from './Moon.js';
-import { createSunGeometry as _createSunGeometry } from './Sun.js'; // Re-exported via index
 import { loadHeartGeometry } from './Heart.js';
 import { loadStarGeometry } from './Star.js';
 
@@ -272,8 +270,6 @@ function loadRoughGeometry(assetBasePath = '/assets') {
  *
  * Safe geometries only - all use compatible material systems:
  * - Crystal-type: crystal, rough, heart, star (CrystalSoul + SSS shader)
- * - Moon: Custom lunar shader with phases and eclipse
- * - Sun: Emissive shader with corona and eclipse effects
  */
 export const THREE_GEOMETRIES = {
     // Plain sphere — the default when coreGeometry is omitted, and the target of
@@ -292,31 +288,7 @@ export const THREE_GEOMETRIES = {
         particleRadiusMultiplier: 1.4,
     },
 
-    moon: {
-        geometry: createMoon(64, 64),
-        material: 'custom',
-        blink: {
-            type: 'gentle-pulse',
-            duration: 180,
-            scaleAxis: [0.95, 0.95, 0.95],
-            glowBoost: 0.2,
-            curve: 'sine',
-        },
-        particleRadiusMultiplier: 1.4, // Wider sphere needs particles further out
-    },
 
-    sun: {
-        geometry: new THREE.SphereGeometry(0.5, 64, 64),
-        material: 'emissive',
-        blink: {
-            type: 'radial-pulse',
-            duration: 200,
-            scaleAxis: [1.05, 1.05, 1.05],
-            glowBoost: 0.5,
-            curve: 'sine',
-        },
-        particleRadiusMultiplier: 1.5, // Sun with corona needs particles even further
-    },
 
     // Crystal with inner soul glow
     crystal: {

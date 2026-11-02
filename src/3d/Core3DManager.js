@@ -20,7 +20,6 @@ import { BlinkAnimator } from './animation/BlinkAnimator.js';
 import { GeometryMorpher } from './utils/GeometryMorpher.js';
 // Note: Behavior classes (RotationBehavior, RightingBehavior, FacingBehavior)
 // are now managed by BehaviorController
-import { updateSunMaterial, SUN_ROTATION_CONFIG } from './geometries/Sun.js';
 import { getEmotion } from '../core/emotions/index.js';
 // getGesture - not imported here; gesture lookup handled by AnimationManager and GestureBlender
 import { getUndertoneModifier } from '../config/undertoneModifiers.js';
@@ -31,11 +30,6 @@ import { Particle3DTranslator } from './particles/Particle3DTranslator.js';
 import { CrystalSoul } from './effects/CrystalSoul.js';
 import { Particle3DRenderer } from './particles/Particle3DRenderer.js';
 import { Particle3DOrchestrator } from './particles/Particle3DOrchestrator.js';
-import {
-    updateMoonGlow,
-    MOON_CALIBRATION_ROTATION,
-    MOON_FACING_CONFIG,
-} from './geometries/Moon.js';
 import { createCustomMaterial, disposeCustomMaterial, disposeTextureCache } from './utils/MaterialFactory.js';
 import { resetGeometryState } from './GeometryStateManager.js';
 import * as GeometryCache from './utils/GeometryCache.js';
@@ -143,13 +137,11 @@ export class Core3DManager {
         this.geometryType = options.geometry || 'sphere';
 
         // Initialize Three.js renderer
-        // Moon is tidally locked - disable auto-rotate for moon regardless of options
-        const isMoon = this.geometryType === 'moon';
         this.renderer = new ThreeRenderer(canvas, {
             enablePostProcessing: options.enablePostProcessing !== false,
             enableShadows: options.enableShadows || false,
             enableControls: options.enableControls !== false, // Camera controls (mouse/touch)
-            autoRotate: isMoon ? false : options.autoRotate !== false, // Moon is tidally locked
+            autoRotate: options.autoRotate !== false,
             autoRotateSpeed: options.autoRotateSpeed, // Auto-rotate speed (undefined = default 0.5)
             cameraDistance: options.cameraDistance, // Camera Z distance (undefined = default 3)
             fov: options.fov, // Field of view (undefined = default 45)
@@ -258,17 +250,6 @@ export class Core3DManager {
         // Applied AFTER all world-space rotations, spins the face like a wheel
         this.cameraRoll = 0; // in radians
 
-        // Set initial calibration rotation for moon to show classic Earth-facing side
-        // This shows the "Man in the Moon" view with Mare Imbrium upper-right
-        if (this.geometryType === 'moon') {
-            const degToRad = Math.PI / 180;
-            this.calibrationRotation = [
-                MOON_CALIBRATION_ROTATION.x * degToRad, // X: world-space rotation
-                MOON_CALIBRATION_ROTATION.y * degToRad, // Y: world-space rotation
-                MOON_CALIBRATION_ROTATION.z * degToRad, // Z: camera-space roll (spins face CW/CCW)
-            ];
-            this.cameraRoll = 0; // Camera-space roll (spin the face)
-        }
 
         // Set initial calibration rotation for crystal/rough/heart/star to show flat facet facing camera
         if (
@@ -333,25 +314,6 @@ export class Core3DManager {
         this.rotationDisabled = options.autoRotate === false; // Disable rotation if autoRotate is false
         this.wobbleEnabled = true; // Wobble/shake effects enabled by default
 
-        // Initialize behavior controller for moon geometry if needed
-        if (isMoon && MOON_FACING_CONFIG.enabled) {
-            const degToRad = Math.PI / 180;
-            this.behaviorController.configureForEmotion({
-                geometryType: 'moon',
-                emotionData: null, // Will be set in setEmotion
-                facingConfig: {
-                    enabled: true,
-                    strength: MOON_FACING_CONFIG.strength,
-                    lockedFace: MOON_FACING_CONFIG.lockedFace,
-                    lerpSpeed: MOON_FACING_CONFIG.lerpSpeed,
-                    calibrationRotation: [
-                        MOON_CALIBRATION_ROTATION.x * degToRad,
-                        MOON_CALIBRATION_ROTATION.y * degToRad,
-                        MOON_CALIBRATION_ROTATION.z * degToRad,
-                    ],
-                },
-            });
-        }
 
         // Current state
         this.emotion = options.emotion || 'neutral';
@@ -609,42 +571,16 @@ export class Core3DManager {
             // Update Three.js lighting based on emotion
             this.renderer.updateLighting(emotion, emotionData);
 
-            // Update custom material with emotion glow color
-            if (this.customMaterial && this.customMaterialType === 'moon') {
-                const glowColorThree = new THREE.Color(
-                    this.glowColor[0],
-                    this.glowColor[1],
-                    this.glowColor[2]
-                );
-                updateMoonGlow(this.customMaterial, glowColorThree, this.glowIntensity);
-            } else if (this.customMaterial && this.customMaterialType === 'sun') {
-                // Update sun material colors (no time delta needed here - just color update)
-                updateSunMaterial(this.coreMesh, this.glowColor, this.glowIntensity, 0);
-            }
 
             // Note: Bloom is updated every frame in render() for smooth transitions
         }
 
         // Configure behavior controller for this emotion and geometry
         // Get geometry-specific rotation config if available
-        const geometryRotation = this.geometryType === 'sun' ? SUN_ROTATION_CONFIG : null;
+        const geometryRotation = null;
 
         // Build facing config for moon if needed
         let facingConfig = null;
-        if (this.geometryType === 'moon' && MOON_FACING_CONFIG.enabled) {
-            const degToRad = Math.PI / 180;
-            facingConfig = {
-                enabled: true,
-                strength: MOON_FACING_CONFIG.strength,
-                lockedFace: MOON_FACING_CONFIG.lockedFace,
-                lerpSpeed: MOON_FACING_CONFIG.lerpSpeed,
-                calibrationRotation: [
-                    MOON_CALIBRATION_ROTATION.x * degToRad,
-                    MOON_CALIBRATION_ROTATION.y * degToRad,
-                    MOON_CALIBRATION_ROTATION.z * degToRad,
-                ],
-            };
-        }
 
         // Configure behaviors via controller
         this.behaviorController.configureForEmotion({
@@ -825,144 +761,13 @@ export class Core3DManager {
         return this.shatterSystem?.isFrozen() || false;
     }
 
-    /**
-     * Get the SolarEclipse instance (for direct control of shadow position, coverage, corona layers)
-     * @returns {SolarEclipse|null}
-     */
-    get solarEclipse() {
-        return this.effectManager?.getSolarEclipse() ?? null;
-    }
 
-    /**
-     * Set solar eclipse type (only works for sun geometry)
-     * @param {string} eclipseType - Eclipse type: 'off', 'annular', or 'total'
-     */
-    setSunShadow(eclipseType = 'off') {
-        if (this.geometryType !== 'sun' || !this.effectManager.hasSolarEclipse()) {
-            console.warn('[Core3DManager] Eclipse only available for sun geometry');
-            return;
-        }
 
-        // Set eclipse type via EffectManager
-        this.effectManager.setSolarEclipse(eclipseType);
-    }
 
-    /**
-     * Start a solar eclipse animation
-     * Morphs to sun geometry if needed, then triggers eclipse
-     * @param {Object} options - Eclipse options
-     * @param {string} options.type - Eclipse type: 'annular' or 'total' (default: 'total')
-     */
-    startSolarEclipse(options = {}) {
-        const eclipseType = options.type || 'total';
 
-        // If already on sun, just trigger eclipse
-        if (this.geometryType === 'sun' && this.effectManager.hasSolarEclipse()) {
-            this.effectManager.setSolarEclipse(eclipseType);
-            return;
-        }
 
-        // Morph to sun, then trigger eclipse after morph completes
-        this.morphToShape('sun');
 
-        // Wait for morph to complete (shrink + grow phases, 600ms default)
-        setTimeout(() => {
-            if (this.effectManager.hasSolarEclipse()) {
-                this.effectManager.setSolarEclipse(eclipseType);
-            }
-        }, 700);
-    }
 
-    /**
-     * Start a lunar eclipse animation (blood moon)
-     * Morphs to moon geometry if needed, then triggers eclipse
-     * @param {Object} options - Eclipse options
-     * @param {string} options.type - Eclipse type: 'total' (blood moon), 'partial', 'penumbral'
-     */
-    startLunarEclipse(options = {}) {
-        const eclipseType = options.type || 'total';
-
-        // If already on moon, just trigger eclipse
-        if (this.geometryType === 'moon' && this.effectManager.hasLunarEclipse()) {
-            this.effectManager.setLunarEclipse(eclipseType);
-            return;
-        }
-
-        // Morph to moon, then trigger eclipse after morph completes
-        this.morphToShape('moon');
-
-        // Wait for morph to complete (shrink + grow phases, 600ms default)
-        setTimeout(() => {
-            if (this.effectManager.hasLunarEclipse()) {
-                this.effectManager.setLunarEclipse(eclipseType);
-            }
-        }, 700);
-    }
-
-    /**
-     * Stop any active eclipse animation
-     */
-    stopEclipse() {
-        this.effectManager.stopAllEclipses();
-    }
-
-    /**
-     * Set lunar eclipse (Blood Moon) effect
-     * @param {string} eclipseType - 'off', 'penumbral', 'partial', 'total'
-     */
-    setMoonEclipse(eclipseType = 'off') {
-        if (this.geometryType !== 'moon' || !this.effectManager.hasLunarEclipse()) {
-            console.warn('[Core3DManager] Lunar eclipse only available for moon geometry');
-            return;
-        }
-
-        // Set eclipse type via EffectManager
-        this.effectManager.setLunarEclipse(eclipseType);
-    }
-
-    /**
-     * Update a specific blend multiplexer layer
-     * @param {number} layerIndex - Layer index (1-4)
-     * @param {Object} params - { mode, strength, enabled }
-     */
-    setBlendLayer(layerIndex, params = {}) {
-        if ((this.geometryType !== 'moon' && this.geometryType !== 'sun') || !this.customMaterial) {
-            console.warn('[Core3DManager] Blend layers only available for moon and sun geometry');
-            return;
-        }
-
-        const layerPrefix = `layer${layerIndex}`;
-
-        if (params.mode !== undefined && this.customMaterial.uniforms[`${layerPrefix}Mode`]) {
-            this.customMaterial.uniforms[`${layerPrefix}Mode`].value = params.mode;
-        }
-        if (
-            params.strength !== undefined &&
-            this.customMaterial.uniforms[`${layerPrefix}Strength`]
-        ) {
-            this.customMaterial.uniforms[`${layerPrefix}Strength`].value = params.strength;
-        }
-        if (params.enabled !== undefined && this.customMaterial.uniforms[`${layerPrefix}Enabled`]) {
-            this.customMaterial.uniforms[`${layerPrefix}Enabled`].value = params.enabled
-                ? 1.0
-                : 0.0;
-        }
-    }
-
-    /**
-     * Update all blend multiplexer layers at once
-     * @param {Array} layers - Array of layer configs [{mode, strength, enabled}, ...]
-     */
-    setAllBlendLayers(layers) {
-        if ((this.geometryType !== 'moon' && this.geometryType !== 'sun') || !this.customMaterial) {
-            console.warn('[Core3DManager] Blend layers only available for moon and sun geometry');
-            return;
-        }
-
-        layers.forEach((layer, index) => {
-            this.setBlendLayer(index + 1, layer);
-        });
-    }
 
     /**
      * Set crystal blend layer for a specific visual component
@@ -1543,20 +1348,6 @@ export class Core3DManager {
             // Update behavior controller for target geometry
             // Build facing config for moon if needed
             let facingConfig = null;
-            if (this._targetGeometryType === 'moon' && MOON_FACING_CONFIG.enabled) {
-                const degToRad = Math.PI / 180;
-                facingConfig = {
-                    enabled: true,
-                    strength: MOON_FACING_CONFIG.strength,
-                    lockedFace: MOON_FACING_CONFIG.lockedFace,
-                    lerpSpeed: MOON_FACING_CONFIG.lerpSpeed,
-                    calibrationRotation: [
-                        MOON_CALIBRATION_ROTATION.x * degToRad,
-                        MOON_CALIBRATION_ROTATION.y * degToRad,
-                        MOON_CALIBRATION_ROTATION.z * degToRad,
-                    ],
-                };
-            }
 
             // Configure behaviors for target geometry via controller
             // Note: emotionData is already declared above in this scope
@@ -1567,48 +1358,22 @@ export class Core3DManager {
                 geometryRotation: null, // No geometry-specific rotation during morph
             });
 
-            // Handle moon-specific camera and controls
-            if (this._targetGeometryType === 'moon') {
-                // Disable OrbitControls camera rotation for moon (tidally locked)
-                if (this.renderer?.controls) {
-                    this.renderer.controls.autoRotate = false;
-                }
 
-                // Reset camera to front view INSTANTLY (immune to auto-rotate position)
-                // This ensures moon always faces camera directly with calibrated orientation
-                // Use instant reset (0ms) to avoid camera still moving during morph
-                // preserveTarget=true keeps the Y offset set by the host app (emotive-holo)
-                if (this.renderer?.setCameraPreset) {
-                    this.renderer.setCameraPreset('front', 0, true);
-                }
-
-                // Apply calibrated rotation to show "Man in the Moon" Earth-facing view
+            // Set calibration rotation for crystal/rough/heart, clear for others
+            if (
+                this._targetGeometryType === 'crystal' ||
+                this._targetGeometryType === 'rough' ||
+                this._targetGeometryType === 'heart'
+            ) {
                 const degToRad = Math.PI / 180;
-                this.calibrationRotation[0] = MOON_CALIBRATION_ROTATION.x * degToRad;
-                this.calibrationRotation[1] = MOON_CALIBRATION_ROTATION.y * degToRad;
-                this.calibrationRotation[2] = MOON_CALIBRATION_ROTATION.z * degToRad;
+                this.calibrationRotation[0] = CRYSTAL_CALIBRATION_ROTATION.x * degToRad;
+                this.calibrationRotation[1] = CRYSTAL_CALIBRATION_ROTATION.y * degToRad;
+                this.calibrationRotation[2] = CRYSTAL_CALIBRATION_ROTATION.z * degToRad;
             } else {
-                // Re-enable auto-rotate when morphing away from moon (if it was originally enabled)
-                if (this.renderer?.controls && this.options.autoRotate !== false) {
-                    this.renderer.controls.autoRotate = true;
-                }
-
-                // Set calibration rotation for crystal/rough/heart, clear for others
-                if (
-                    this._targetGeometryType === 'crystal' ||
-                    this._targetGeometryType === 'rough' ||
-                    this._targetGeometryType === 'heart'
-                ) {
-                    const degToRad = Math.PI / 180;
-                    this.calibrationRotation[0] = CRYSTAL_CALIBRATION_ROTATION.x * degToRad;
-                    this.calibrationRotation[1] = CRYSTAL_CALIBRATION_ROTATION.y * degToRad;
-                    this.calibrationRotation[2] = CRYSTAL_CALIBRATION_ROTATION.z * degToRad;
-                } else {
-                    // Clear calibration rotation for other geometries
-                    this.calibrationRotation[0] = 0;
-                    this.calibrationRotation[1] = 0;
-                    this.calibrationRotation[2] = 0;
-                }
+                // Clear calibration rotation for other geometries
+                this.calibrationRotation[0] = 0;
+                this.calibrationRotation[1] = 0;
+                this.calibrationRotation[2] = 0;
             }
 
             // No post-swap hold — mascot is at 8% scale (nearly invisible) so
@@ -3408,10 +3173,6 @@ export class Core3DManager {
             this.renderer.updateCrackLayer(null, deltaTime);
         }
 
-        // Update sun material animation if using sun geometry
-        if (this.customMaterialType === 'sun') {
-            updateSunMaterial(this.coreMesh, this.glowColor, effectiveGlowIntensity, deltaTime);
-        }
 
         // Moon: glowIntensity affects subtle emotion-colored glow (very subtle effect, * 0.02 in shader)
         // Unlike crystals, moon doesn't have a "core" that glows - it's a textured lit sphere
@@ -3584,8 +3345,6 @@ export class Core3DManager {
         opts.hasActiveGesture = this.animationManager.hasActiveAnimations(); // Faster lerp during gestures
         opts.calibrationRotation = this.calibrationRotation; // Applied on top of animated rotation
         opts.cameraRoll = this._cameraRoll || 0; // Camera-relative roll for tidal-locked lean gestures
-        opts.solarEclipse = this.effectManager.getSolarEclipse(); // Pass eclipse manager for synchronized updates
-        opts.deltaTime = deltaTime; // Pass deltaTime for eclipse animation
         opts.morphProgress = morphState.isTransitioning ? morphState.visualProgress : null; // For corona fade-in
         // OPTIMIZATION FLAGS: Skip render passes when not needed
         opts.hasSoul = this.customMaterialType === 'crystal' && this.crystalSoul !== null;
@@ -3599,8 +3358,6 @@ export class Core3DManager {
         opts.deformation = this._deformation;
         this.renderer.render(opts);
 
-        // Update lunar eclipse animation (Blood Moon)
-        this.effectManager.updateLunarEclipse(deltaTime);
 
     }
 

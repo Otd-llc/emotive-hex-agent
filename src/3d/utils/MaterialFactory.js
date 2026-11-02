@@ -3,8 +3,6 @@
  */
 
 import * as THREE from 'three';
-import { createMoonShadowMaterial, createMoonMultiplexerMaterial } from '../geometries/Moon.js';
-import { createSunMaterial } from '../geometries/Sun.js';
 
 // Caching texture loader — wraps THREE.TextureLoader to avoid reloading on re-morph.
 // Duck-types as TextureLoader so Sun/Moon code works unchanged.
@@ -78,15 +76,6 @@ function createCustomTypeMaterial(
     onTextureReady
 ) {
     switch (geometryType) {
-        case 'moon':
-            return createMoonMaterial(
-                textureLoader,
-                glowColor,
-                glowIntensity,
-                materialVariant,
-                assetBasePath,
-                onTextureReady
-            );
         case 'crystal':
             // Uses quartz SSS preset for clear crystal appearance
             return createCrystalMaterial(
@@ -146,15 +135,6 @@ function createEmissiveMaterial(
     assetBasePath
 ) {
     switch (geometryType) {
-        case 'sun':
-            return createSunMaterialWrapper(
-                textureLoader,
-                glowColor,
-                glowIntensity,
-                materialVariant,
-                emotionData,
-                assetBasePath
-            );
         default:
             console.warn('Unknown emissive material type:', geometryType);
             return null;
@@ -403,58 +383,7 @@ function createCrystalMaterial(
     return { material, type: 'crystal' };
 }
 
-function createMoonMaterial(
-    loader,
-    glowColor,
-    glowIntensity,
-    materialVariant = null,
-    assetBasePath = '/assets',
-    onTextureReady = null
-) {
-    // 2k (2048x1024 WebP, ~1.2 MB for colour + normal) is more than the mascot canvas
-    // can show; 4k is 4.4 MB and was the desktop default until 3.5.0.
-    const resolution = '2k';
 
-    if (materialVariant === 'multiplexer') {
-        const material = createMoonMultiplexerMaterial(loader, {
-            resolution,
-            glowColor: new THREE.Color(glowColor[0], glowColor[1], glowColor[2]),
-            glowIntensity,
-            assetBasePath,
-            onTextureReady,
-        });
-        return { material, type: 'moon-multiplexer' };
-    }
-
-    const material = createMoonShadowMaterial(loader, {
-        resolution,
-        glowColor: new THREE.Color(glowColor[0], glowColor[1], glowColor[2]),
-        glowIntensity,
-        moonPhase: 'full',
-        assetBasePath,
-        onTextureReady,
-    });
-
-    return { material, type: 'moon' };
-}
-
-function createSunMaterialWrapper(
-    loader,
-    glowColor,
-    glowIntensity,
-    materialVariant = null,
-    _emotionData = null,
-    assetBasePath = '/assets'
-) {
-    const material = createSunMaterial(loader, {
-        glowColor,
-        glowIntensity,
-        resolution: '4k',
-        materialVariant,
-        assetBasePath,
-    });
-    return { material, type: 'sun' };
-}
 
 export function disposeCustomMaterial(customMaterial) {
     if (!customMaterial) return;
