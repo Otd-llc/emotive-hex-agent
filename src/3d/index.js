@@ -557,8 +557,13 @@ export class EmotiveMascot3D {
         return this;
     }
 
-    /** Tear down. */
+    /**
+     * Tear down. Rendering stops and the canvas leaves the page at once; GL resources and
+     * the WebGL context are released once in-flight shader compiles settle.
+     * @returns {Promise<void>} resolves when the context has been released
+     */
     destroy() {
+        if (this._destroyPromise) return this._destroyPromise;
         this._destroyed = true;
         this.stop();
 
@@ -583,13 +588,14 @@ export class EmotiveMascot3D {
             this._resizeObserver = null;
         }
 
-        if (this.core3D) this.core3D.destroy();
+        this._destroyPromise = this.core3D ? this.core3D.destroy() : Promise.resolve();
 
         if (this.webglCanvas?.parentNode) this.webglCanvas.parentNode.removeChild(this.webglCanvas);
         this.container = null;
         this.webglCanvas = null;
         this.config = null;
         this.currentGesture = null;
+        return this._destroyPromise;
     }
 }
 

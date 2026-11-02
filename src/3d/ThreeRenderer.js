@@ -31,6 +31,8 @@ export class ThreeRenderer {
         this.canvas = canvas;
         this.options = options;
         this._destroyed = false;
+        // Raw renderer.compileAsync promises still polling (fix a): GL teardown waits on them.
+        this._pendingCompiles = new Set();
 
         this.scene = new THREE.Scene();
         this.scene.background = null;
@@ -475,14 +477,51 @@ export class ThreeRenderer {
         try {
             // Layer 0 renders straight to the canvas, so compile the canvas variant.
             this.renderer.setRenderTarget(null);
+            const raw = this.renderer.compileAsync(object, this.camera, this.scene);
+            this._trackCompile(raw);
+            let timer;
             await Promise.race([
-                this.renderer.compileAsync(object, this.camera, this.scene),
-                new Promise(resolve => setTimeout(resolve, COMPILE_TIMEOUT_MS)),
+                raw,
+                new Promise(resolve => (timer = setTimeout(resolve, COMPILE_TIMEOUT_MS))),
             ]);
+            clearTimeout(timer);
         } catch (error) {
             console.warn('[ThreeRenderer] compileAsync failed, falling back to lazy compile', error);
         } finally {
             if (!this._destroyed && this.renderer) this.renderer.setRenderTarget(savedTarget);
+        }
+    }
+
+    /** @private */
+    _trackCompile(raw) {
+        this._pendingCompiles.add(raw);
+        const done = () => this._pendingCompiles.delete(raw);
+        raw.then(done, done);
+    }
+
+    /** @returns {number} raw compileAsync promises not yet settled */
+    pendingCompileCount() {
+        return this._pendingCompiles.size;
+    }
+
+    /**
+     * Resolves once every tracked compileAsync has settled (capped at COMPILE_TIMEOUT_MS).
+     * @returns {Promise<void>}
+     */
+    async whenCompilesSettled() {
+        const deadline = Date.now() + COMPILE_TIMEOUT_MS;
+        while (this._pendingCompiles.size > 0) {
+            const left = deadline - Date.now();
+            if (left <= 0) {
+                console.warn('[ThreeRenderer] shader compiles still pending at teardown; releasing anyway');
+                return;
+            }
+            let timer;
+            await Promise.race([
+                Promise.allSettled([...this._pendingCompiles]),
+                new Promise(resolve => (timer = setTimeout(resolve, left))),
+            ]);
+            clearTimeout(timer);
         }
     }
 
@@ -532,9 +571,20 @@ export class ThreeRenderer {
         material.dispose();
     }
 
-    /** Release every GPU resource. */
+    /**
+     * Release every GPU resource and the context. GL teardown waits for in-flight shader
+     * compiles (three polls the program until it links), then dispose() + forceContextLoss().
+     * @returns {Promise<void>}
+     */
     destroy() {
+        if (this._destroyPromise) return this._destroyPromise;
         this._destroyed = true;
+        this._destroyPromise = this.whenCompilesSettled().then(() => this._disposeGL());
+        return this._destroyPromise;
+    }
+
+    /** @private */
+    _disposeGL() {
         if (this.renderer?.domElement) {
             this.renderer.domElement.removeEventListener('webglcontextlost', this._boundHandleContextLost, false);
             this.renderer.domElement.removeEventListener(
@@ -559,6 +609,9 @@ export class ThreeRenderer {
         }
         if (this.renderer) {
             this.renderer.dispose();
+            // Free the context now instead of at GC: browsers cap live contexts and drop the
+            // OLDEST, which would be the host page's (root cause 7.2).
+            this.renderer.forceContextLoss();
             this.renderer = null;
         }
         this.scene.clear();
