@@ -21,12 +21,17 @@ import { ResizeObserverManager } from './managers/ResizeObserverManager.js';
 import { setSurface } from './materials/surface.js';
 import { FRAME_TIMING, ACCESSIBILITY } from '../core/config/defaults.js';
 import { THREE_GEOMETRIES } from './geometries/ThreeGeometries.js';
-import { enterStepMode, exitStepMode, advance as advanceClock } from './utils/clock.js';
+import { enterStepMode, exitStepMode, advance as advanceClock, now as clockNow } from './utils/clock.js';
 import { seed as seedRng } from './utils/rng.js';
 import { FLASH_SAFETY } from './flashSafety.js';
 
 /** setGlow() never completes a change faster than this (flash safety). */
 export const GLOW_MIN_MS = 250;
+/**
+ * An element gesture (shock, electricflourish) fired before its pool has linked waits this long
+ * at most, then is dropped: a late arc for a moment that has passed reads as a glitch.
+ */
+export const ELEMENT_GESTURE_QUEUE_MS = 3000;
 
 /** Geometry names morphTo() accepts. */
 const VALID_GEOMETRIES = Object.keys(THREE_GEOMETRIES);
@@ -271,6 +276,7 @@ export class EmotiveMascot3D {
         enterStepMode();
         advanceClock(dtMs);
         if (!this.core3D) return;
+        if (this._queuedGesture) this._drainGestureQueue();
         this.core3D.render(dtMs);
         if (!this._canvasAppended && this.container && this.webglCanvas) {
             this.container.appendChild(this.webglCanvas);
@@ -330,6 +336,7 @@ export class EmotiveMascot3D {
         const deltaTime = Math.min(this._frameAccum, FRAME_TIMING.RENDER_DELTA_CAP);
         this._frameAccum = 0;
 
+        if (this._queuedGesture) this._drainGestureQueue();
         if (this.core3D) {
             this.core3D.render(deltaTime);
             if (!this._canvasAppended && this.container && this.webglCanvas) {
@@ -404,6 +411,43 @@ export class EmotiveMascot3D {
             );
             return this;
         }
+        // An element gesture before its pool has linked would play with no arcs: hold the latest
+        // one (it replaces any held one) and play it once the pool is ready, within
+        // ELEMENT_GESTURE_QUEUE_MS. Plain gestures never wait.
+        if (this.core3D && gesture.config?.spawnMode && !this._elementPoolReady()) {
+            this._queuedGesture = { name: gestureName, at: clockNow() };
+            this.eventManager.emit('gesture:queued', { gesture: gestureName });
+            return this;
+        }
+        this._playNow(gestureName, gesture);
+        return this;
+    }
+
+    /** @private The electric pool has linked and joined the scene. */
+    _elementPoolReady() {
+        return !!this.core3D?.elementSpawner?.pools?.get('electricity')?.mesh;
+    }
+
+    /**
+     * @private Play a held element gesture once its pool is ready; drop it once stale.
+     * Called every rendered frame.
+     */
+    _drainGestureQueue() {
+        const q = this._queuedGesture;
+        if (!q) return;
+        if (clockNow() - q.at > ELEMENT_GESTURE_QUEUE_MS) {
+            this._queuedGesture = null;
+            this.eventManager.emit('gesture:dropped', { gesture: q.name });
+            return;
+        }
+        if (!this._elementPoolReady()) return;
+        this._queuedGesture = null;
+        const gesture = getGesture(q.name);
+        if (gesture) this._playNow(q.name, gesture);
+    }
+
+    /** @private */
+    _playNow(gestureName, gesture) {
         if (this.core3D) this.core3D.playGesture(gestureName);
 
         const duration = gesture.config?.duration || 800;
@@ -415,7 +459,6 @@ export class EmotiveMascot3D {
         this.gestureTimeouts.push(timeoutId);
 
         this.eventManager.emit('gesture:trigger', { gesture: gestureName });
-        return this;
     }
 
     /** Alias of express. */
@@ -798,6 +841,7 @@ export class EmotiveMascot3D {
 
         this.gestureTimeouts.forEach(id => clearTimeout(id));
         this.gestureTimeouts = [];
+        this._queuedGesture = null;
 
         if (this.eventManager?._listeners) {
             Object.keys(this.eventManager._listeners).forEach(key => {
