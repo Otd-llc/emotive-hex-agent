@@ -24,8 +24,7 @@
         "**/elemental/*/register.js"
     ],
     "scripts": {
-        "build": "rollup -c --environment NODE_ENV:production",
-        "build:dev": "rollup -c --environment NODE_ENV:development",
+        "build": "rollup -c",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:unit": "vitest run test/unit",
@@ -33,7 +32,8 @@
         "lint:fix": "eslint src/**/*.js --fix",
         "format": "prettier --write \"src/**/*.{js,json}\"",
         "format:check": "prettier --check \"src/**/*.{js,json}\"",
-        "clean": "node -e \"import('fs').then(fs => fs.rmSync('dist', {recursive: true, force: true}))\""
+        "clean": "node -e \"import('fs').then(fs => fs.rmSync('dist', {recursive: true, force: true}))\"",
+        "size": "node scripts/size.mjs"
     },
     "peerDependencies": {
         "three": "~0.170.0"
@@ -63,5 +63,17 @@
         "typedoc-plugin-markdown": "^4.11.0",
         "vitest": "^4.1.0",
         "three": "0.170.0"
-    }
+    },
+    "main": "dist/emotive-hex-agent.js",
+    "module": "dist/emotive-hex-agent.js",
+    "exports": {
+        ".": {
+            "import": "./dist/emotive-hex-agent.js"
+        }
+    },
+    "files": [
+        "dist/emotive-hex-agent.js",
+        "LICENSE.md",
+        "NOTICE"
+    ]
 }
