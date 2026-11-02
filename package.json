@@ -27,7 +27,11 @@
         "format": "prettier --write \"src/**/*.{js,json}\"",
         "format:check": "prettier --check \"src/**/*.{js,json}\"",
         "clean": "node -e \"import('fs').then(fs => fs.rmSync('dist', {recursive: true, force: true}))\"",
-        "size": "node scripts/size.mjs"
+        "size": "node scripts/size.mjs",
+        "gate:gl": "node harness/gates/gl.mjs",
+        "gate:teardown": "node harness/gates/teardown.mjs",
+        "gate:states": "node harness/gates/states.mjs",
+        "harness": "node harness/serve.mjs"
     },
     "peerDependencies": {
         "three": "~0.170.0"

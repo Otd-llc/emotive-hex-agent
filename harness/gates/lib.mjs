@@ -102,11 +102,16 @@ export async function pixelStats(page, rect, field) {
             const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
             const L = (r, gg, b) => 0.2126 * lin(r) + 0.7152 * lin(gg) + 0.0722 * lin(b);
             const Lf = L(...field);
-            let sum = 0, covered = 0;
+            // CIE L* (0-100): perceptual lightness, so a saturated blue gem on navy counts.
+            const Lstar = Y => (Y > 216 / 24389 ? 116 * Math.cbrt(Y) - 16 : (24389 / 27) * Y);
+            const LSf = Lstar(Lf);
+            let sum = 0, covered = 0, sumStar = 0;
             const n = d.length / 4;
             for (let i = 0; i < d.length; i += 4) {
-                const dl = Math.abs(L(d[i], d[i + 1], d[i + 2]) - Lf);
+                const y = L(d[i], d[i + 1], d[i + 2]);
+                const dl = Math.abs(y - Lf);
                 sum += dl;
+                sumStar += Math.abs(Lstar(y) - LSf);
                 if (dl > 0.02) covered++;
             }
             const ci = ((c.height >> 1) * c.width + (c.width >> 1)) * 4;
@@ -121,7 +126,7 @@ export async function pixelStats(page, rect, field) {
                     centreMaxDL = Math.max(centreMaxDL, Math.abs(L(d[i], d[i + 1], d[i + 2]) - Lf));
                 }
             }
-            return { meanAbsDL: sum / n, centre, field, centreDL: Math.abs(L(...centre) - Lf), centreMaxDL, coverage: covered / n };
+            return { meanAbsDL: sum / n, meanAbsDLstar: sumStar / n, centre, field, centreDL: Math.abs(L(...centre) - Lf), centreMaxDL, coverage: covered / n };
         },
         { b64, field }
     );
