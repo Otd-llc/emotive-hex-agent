@@ -34,7 +34,7 @@ function run(m, hz, ms, t0 = 1000) {
 }
 
 async function started(core) {
-    const m = new EmotiveMascot3D({});
+    const m = new EmotiveMascot3D({ assetBasePath: '/x/' });
     m.core3D = core;
     m.container = document.createElement('div');
     m.webglCanvas = document.createElement('canvas');

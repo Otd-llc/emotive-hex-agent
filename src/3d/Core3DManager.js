@@ -12,6 +12,7 @@
 
 import * as THREE from 'three';
 import { ThreeRenderer } from './ThreeRenderer.js';
+import { assertAssetBasePath } from './utils/assetBasePath.js';
 import { THREE_GEOMETRIES } from './geometries/ThreeGeometries.js';
 import { ProceduralAnimator } from './animation/ProceduralAnimator.js';
 import { BreathingAnimator } from './animation/BreathingAnimator.js';
@@ -73,7 +74,7 @@ export class Core3DManager {
      * @param {number} [options.minZoom] - Minimum zoom distance
      * @param {number} [options.maxZoom] - Maximum zoom distance
      * @param {string} [options.materialVariant] - Material variant override
-     * @param {string} [options.assetBasePath='/assets'] - Base path for loading assets (textures, models)
+     * @param {string} options.assetBasePath - Base path for loading assets (required)
      * @param {string[]} [options.preloadElements] - Element types to preload immediately (e.g., ['fire', 'ice'])
      */
     constructor(canvas, options = {}) {
@@ -100,7 +101,8 @@ export class Core3DManager {
 
         // Asset base path for textures and models (configurable for GitHub Pages, etc.)
         // Empty string triggers auto-detection in ThreeRenderer
-        this.assetBasePath = options.assetBasePath !== undefined ? options.assetBasePath : '';
+        assertAssetBasePath(options.assetBasePath);
+        this.assetBasePath = options.assetBasePath;
 
 
         // Element preloading options

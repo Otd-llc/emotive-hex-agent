@@ -50,7 +50,7 @@ describe('SSS preset survives a material swap synchronously (fix d)', () => {
     it('re-applies the current preset inside onMaterialSwap, before any timer runs', () => {
         vi.useFakeTimers();
         try {
-            const m = new EmotiveMascot3D({});
+            const m = new EmotiveMascot3D({ assetBasePath: '/x/' });
             m.core3D = { customMaterial: crystal() };
             expect(m.setSSSPreset('ruby', { immediate: true })).toBe(true);
 

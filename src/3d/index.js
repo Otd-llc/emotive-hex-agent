@@ -11,6 +11,7 @@
  */
 
 import { Core3DManager } from './Core3DManager.js';
+import { assertAssetBasePath } from './utils/assetBasePath.js';
 import { EventManager } from '../core/events/EventManager.js';
 import { listEmotions, hasEmotion } from '../core/emotions/index.js';
 import { getGesture, listGestures } from '../core/gestures/index.js';
@@ -44,6 +45,7 @@ export class EmotiveMascot3D {
      * @param {'dark'|'light'} [config.surface] - what the transparent canvas sits on
      */
     constructor(config = {}) {
+        assertAssetBasePath(config.assetBasePath);
         this.config = {
             canvasId: config.canvasId || 'emotive-canvas',
             coreGeometry: config.coreGeometry || 'crystal',
