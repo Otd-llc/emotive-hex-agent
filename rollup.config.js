@@ -20,8 +20,6 @@ export const STUBS = [
     '3d/geometries/Sun.js', '3d/geometries/Moon.js',
     '3d/effects/SolarEclipse.js', '3d/effects/LunarEclipse.js', '3d/effects/BaileysBeads.js',
     '3d/shaders/sunWithBlendLayers.js',
-    '3d/audio/AudioBridge.js', '3d/animation/DanceChoreographer.js', '3d/animation/Rhythm3DAdapter.js',
-    'core/morpher/AgentBPMDetector.js', 'core/audio/AudioInterpreter.js',
     '3d/effects/SmokeParticleSystem.js', '3d/effects/ParticleAtmosphericsManager.js',
     '3d/AmbientOcclusionPass.js', '3d/effects/VelocityMotionBlurPass.js', '3d/UnrealBloomPassAlpha.js',
     '3d/effects/CrackLayer.js', '3d/effects/shatter/ShatterSystem.js',

@@ -79,7 +79,6 @@ import { VISIBILITY } from './config/defaults.js';
  */
 
 import { applyUndertoneSaturationToArray } from '../utils/colorUtils.js';
-import rhythmIntegration from './audio/rhythmIntegration.js';
 import { getEmotion } from './emotions/index.js';
 import { emotionCache } from './cache/EmotionCache.js';
 import ParticlePool from './particle/ParticlePool.js';
@@ -298,33 +297,7 @@ class ParticleSystem {
                 ? applyUndertoneSaturationToArray(emotionColors, undertone)
                 : emotionColors;
 
-        // Apply rhythm modulation if enabled
-        let rhythmModulatedRate = particleRate;
-        if (rhythmIntegration.isEnabled()) {
-            const emotionConfig =
-                emotionCache && emotionCache.isInitialized
-                    ? emotionCache.getEmotion(emotion)
-                    : getEmotion(emotion);
-            if (emotionConfig) {
-                const modulation = rhythmIntegration.applyParticleRhythm(emotionConfig, this);
-
-                // Apply emission burst on beat
-                if (modulation.emitBurst) {
-                    for (
-                        let i = 0;
-                        i < modulation.emitBurst && this.particles.length < maxParticles;
-                        i++
-                    ) {
-                        this.spawnSingleParticle(behavior, centerX, centerY);
-                    }
-                }
-
-                // Modulate emission rate
-                if (modulation.emissionRate !== undefined) {
-                    rhythmModulatedRate *= modulation.emissionRate;
-                }
-            }
-        }
+        const rhythmModulatedRate = particleRate;
 
         // If specific count is provided, spawn that many
         if (count !== null) {

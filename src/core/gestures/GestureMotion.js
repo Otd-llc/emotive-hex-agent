@@ -19,7 +19,6 @@
  */
 
 import { getGesture, isBlendingGesture, isOverrideGesture } from './index.js';
-import rhythmIntegration from '../audio/rhythmIntegration.js';
 
 let _deprecationWarned_getAvailableGestures = false;
 
@@ -62,23 +61,7 @@ export function applyGestureMotion(particle, dt, motion, progress, centerX, cent
         return;
     }
 
-    // Apply rhythm modulation if enabled
-    let rhythmModifiedMotion = motion;
-    if (rhythmIntegration.isEnabled() && gesture.rhythm?.enabled) {
-        const modulation = rhythmIntegration.applyGestureRhythm(gesture, particle, progress, dt);
-
-        // Create modified motion with rhythm adjustments
-        rhythmModifiedMotion = {
-            ...motion,
-            amplitude:
-                (motion.amplitude || 1) *
-                (modulation.amplitudeMultiplier || 1) *
-                (modulation.accentMultiplier || 1),
-            wobbleAmount: (motion.wobbleAmount || 0) * (modulation.wobbleMultiplier || 1),
-            // Allow rhythm to affect other parameters as needed
-            rhythmModulation: modulation,
-        };
-    }
+    const rhythmModifiedMotion = motion;
 
     // Apply the gesture using its modular implementation
     if (gesture.apply) {

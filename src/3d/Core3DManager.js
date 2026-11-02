@@ -17,7 +17,6 @@ import { ProceduralAnimator } from './animation/ProceduralAnimator.js';
 import { BreathingAnimator } from './animation/BreathingAnimator.js';
 import { GestureBlender } from './animation/GestureBlender.js';
 import { BlinkAnimator } from './animation/BlinkAnimator.js';
-import { rhythm3DAdapter } from './animation/Rhythm3DAdapter.js';
 import { GeometryMorpher } from './utils/GeometryMorpher.js';
 // Note: Behavior classes (RotationBehavior, RightingBehavior, FacingBehavior)
 // are now managed by BehaviorController
@@ -299,11 +298,9 @@ export class Core3DManager {
         this.effectManager = new EffectManager(this.renderer, this.assetBasePath);
 
         // Behavior controller (manages rotation, righting, and facing behaviors)
-        // Note: rhythmEngine is passed later via setRhythmEngine() if needed
         this.behaviorController = new BehaviorController({
             rotationDisabled: options.autoRotate === false,
             wobbleEnabled: true,
-            rhythmEngine: options.rhythmEngine || null,
             camera: this.renderer.camera,
         });
 
@@ -381,17 +378,6 @@ export class Core3DManager {
         this.position = [0, 0, 0];
         this._nonUniformScaleBuf = [1, 1, 1]; // Pre-allocated buffer for nonUniformScale
 
-        // Rhythm engine reference (for BPM sync)
-        this.rhythmEngine = options.rhythmEngine || null;
-
-        // Initialize 3D rhythm adapter for beat-synced animations
-        this.rhythm3DAdapter = rhythm3DAdapter;
-        this.rhythmEnabled = options.enableRhythm !== false; // Enabled by default
-        if (this.rhythmEnabled) {
-            this.rhythm3DAdapter.initialize();
-            // Wire up breathing animator to rhythm adapter for coordination
-            this.breathingAnimator.setRhythmAdapter(this.rhythm3DAdapter);
-        }
 
         // ═══════════════════════════════════════════════════════════════════════════
         // PARTICLE SYSTEM INTEGRATION
@@ -707,13 +693,6 @@ export class Core3DManager {
         // Update blink animator with new emotion
         this.blinkAnimator.setEmotion(emotion);
 
-        // Update groove preset based on emotion (if rhythm is playing)
-        // Energetic emotions → bounce groove, calm emotions → subtle groove, flowing → flowing groove
-        if (this.rhythmEnabled && this.rhythm3DAdapter?.isPlaying?.()) {
-            const emotionGroove = this._getEmotionGroove(emotion);
-            // Use quantize + bars for smooth, musical transition
-            this.rhythm3DAdapter.setGroove(emotionGroove, { quantize: true, bars: 2 });
-        }
 
         // Immediately reset bloom to prevent accumulation (fast transition on emotion change)
         this.renderer.updateBloom(this.baseGlowIntensity, 1.0, this.geometryType);
@@ -1215,150 +1194,18 @@ export class Core3DManager {
         this.materialVariant = variant;
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // RHYTHM SYNC API
-    // ═══════════════════════════════════════════════════════════════════════════
 
-    /**
-     * Enable or disable rhythm sync for 3D animations
-     * @param {boolean} enabled - Whether rhythm sync is enabled
-     */
-    setRhythmEnabled(enabled) {
-        this.rhythmEnabled = enabled;
-        if (enabled && this.rhythm3DAdapter && !this.rhythm3DAdapter.enabled) {
-            this.rhythm3DAdapter.initialize();
-        }
-    }
 
-    /**
-     * Enable or disable ambient groove (subtle idle animation synced to beat)
-     * @param {boolean} enabled - Whether groove is enabled
-     */
-    setGrooveEnabled(enabled) {
-        if (this.rhythm3DAdapter) {
-            this.rhythm3DAdapter.setGrooveEnabled(enabled);
-        }
-    }
 
-    /**
-     * Set beat sync strength for gesture animations
-     * @param {number} strength - Sync strength (0-1), higher = more pronounced beat sync
-     */
-    setBeatSyncStrength(strength) {
-        if (this.rhythm3DAdapter) {
-            this.rhythm3DAdapter.setBeatSyncStrength(strength);
-        }
-    }
 
-    /**
-     * Set groove configuration for idle animations
-     * @param {Object} config - Groove settings
-     * @param {number} config.grooveBounceAmount - Vertical bounce amplitude (default: 0.02)
-     * @param {number} config.grooveSwayAmount - Horizontal sway amplitude (default: 0.015)
-     * @param {number} config.groovePulseAmount - Scale pulse amplitude (default: 0.03)
-     * @param {number} config.grooveRotationAmount - Rotation sway amplitude (default: 0.02)
-     */
-    setGrooveConfig(config) {
-        if (this.rhythm3DAdapter) {
-            this.rhythm3DAdapter.setGrooveConfig(config);
-        }
-    }
 
-    /**
-     * Check if rhythm is currently playing
-     * @returns {boolean}
-     */
-    isRhythmPlaying() {
-        return this.rhythm3DAdapter?.isPlaying() || false;
-    }
 
-    /**
-     * Get current BPM from rhythm system
-     * @returns {number}
-     */
-    getRhythmBPM() {
-        return this.rhythm3DAdapter?.getBPM() || 120;
-    }
 
-    /**
-     * Start rhythm playback for 3D animations
-     * @param {number} bpm - Beats per minute (default: 120)
-     * @param {string} pattern - Rhythm pattern (default: 'straight')
-     */
-    startRhythm(bpm = 120, pattern = 'straight') {
-        if (this.rhythm3DAdapter) {
-            this.rhythm3DAdapter.start(bpm, pattern);
-        }
-    }
 
-    /**
-     * Stop rhythm playback
-     */
-    stopRhythm() {
-        if (this.rhythm3DAdapter) {
-            this.rhythm3DAdapter.stop();
-        }
-    }
 
-    /**
-     * Set rhythm BPM
-     * @param {number} bpm - Beats per minute (20-360)
-     */
-    setRhythmBPM(bpm) {
-        if (this.rhythm3DAdapter) {
-            this.rhythm3DAdapter.setBPM(bpm);
-        }
-    }
 
-    /**
-     * Set rhythm pattern
-     * @param {string} pattern - Pattern name: 'straight', 'swing', 'waltz', 'dubstep', etc.
-     */
-    setRhythmPattern(pattern) {
-        if (this.rhythm3DAdapter) {
-            this.rhythm3DAdapter.setPattern(pattern);
-        }
-    }
 
-    /**
-     * Set the active groove preset
-     * Groove presets define the character of the ambient groove animation:
-     * - 'groove1': Subtle, elegant - gentle bounce and sway (default)
-     * - 'groove2': Energetic, bouncy - pronounced vertical motion
-     * - 'groove3': Smooth, flowing - emphasis on rotation and sway
-     *
-     * @param {string} grooveName - Groove preset name ('groove1', 'groove2', 'groove3')
-     * @param {Object} [options] - Transition options
-     * @param {number} [options.bars] - Transition duration in bars (e.g., 2 = morph over 2 bars)
-     * @param {number} [options.duration] - Transition duration in seconds (alternative to bars)
-     */
-    setGroove(grooveName, options = {}) {
-        if (this.rhythm3DAdapter) {
-            this.rhythm3DAdapter.setGroove(grooveName, options);
-        }
-    }
 
-    /**
-     * Get available groove preset names
-     * @returns {string[]} Array of groove preset names
-     */
-    getGroovePresets() {
-        if (this.rhythm3DAdapter) {
-            return this.rhythm3DAdapter.getGroovePresets();
-        }
-        return ['groove1', 'groove2', 'groove3'];
-    }
-
-    /**
-     * Get current groove preset name
-     * @returns {string} Current groove preset name
-     */
-    getCurrentGroove() {
-        if (this.rhythm3DAdapter) {
-            return this.rhythm3DAdapter.getCurrentGroove();
-        }
-        return 'groove1';
-    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // IMPERATIVE BREATHING PHASE API (for meditation)
@@ -1853,14 +1700,6 @@ export class Core3DManager {
         this.baseQuaternion.setFromEuler(this.tempEuler);
 
         // ═══════════════════════════════════════════════════════════════════════════
-        // UPDATE RHYTHM ADAPTER - Must happen before gesture blending
-        // Always update - the adapter handles its own enabled/playing state
-        // ═══════════════════════════════════════════════════════════════════════════
-        if (this.rhythm3DAdapter) {
-            this.rhythm3DAdapter.update(deltaTime);
-        }
-
-        // ═══════════════════════════════════════════════════════════════════════════
         // GESTURE BLENDING SYSTEM - Blend multiple simultaneous gestures
         // ═══════════════════════════════════════════════════════════════════════════
         const blended = this.animationManager.blend(
@@ -1869,56 +1708,13 @@ export class Core3DManager {
             this.baseGlowIntensity
         );
 
-        // Get rhythm modulation (applies to gesture output)
-        // Auto-detects if rhythm is playing (started by any system - audio manager, etc.)
-        const rhythmMod = this.rhythm3DAdapter?.isPlaying()
-            ? this.rhythm3DAdapter.getModulation()
-            : null;
-
-        // ═══════════════════════════════════════════════════════════════════════════
-        // GROOVE + GESTURE BLENDING SYSTEM
-        // ═══════════════════════════════════════════════════════════════════════════
-        // Two types of gestures:
-        // 1. ABSOLUTE gestures (bounce, spin): Create their own motion, reduce groove to avoid conflict
-        // 2. ACCENT gestures (pop, punch): Boost groove as punctuation, keep groove at full strength
-        //
-        // Key insight: Accent gestures work WITH the groove, not against it.
-
-        // Determine groove blend factor based on gesture type
-        // - Accent-only: Keep groove at 100% (accents enhance groove)
-        // - Absolute gestures: Reduce groove to 30% (avoid competing animations)
-        // - No gestures: Full groove
-        const hasAbsolute = blended.hasAbsoluteGestures;
-
-        // Smooth the groove blend transition to avoid discontinuity
-        // Initialize if not set
-        if (this._grooveBlendCurrent === undefined) {
-            this._grooveBlendCurrent = 1.0;
-        }
-
-        // Initialize smoothed boost values (match groove smoothing for consistent feel)
+        // Initialize smoothed boost values
         if (this._smoothedBoost === undefined) {
-            this._smoothedBoost = {
-                position: [0, 0, 0],
-                rotation: [0, 0, 0],
-                scale: 1.0,
-            };
+            this._smoothedBoost = { position: [0, 0, 0], rotation: [0, 0, 0], scale: 1.0 };
         }
 
-        // Target: 30% for absolute gestures, 100% for accent-only or no gestures
-        // Apply freeze modifier: freezeGroove reduces groove animation
-        const freezeGroove = blended.freezeGroove || 0;
-        const freezeMultiplier = 1.0 - freezeGroove; // 1 = normal, 0 = frozen
-        const grooveBlendTarget = (hasAbsolute ? 0.3 : 1.0) * freezeMultiplier;
-
-        // Smooth transition (lerp toward target)
-        // Use same smoothing speed as groove for consistent feel
-        const blendSpeed = 12.0; // Match grooveSmoothingSpeed in Rhythm3DAdapter
         const dt = deltaTime / 1000;
-        const t = 1 - Math.exp(-blendSpeed * dt);
-
-        this._grooveBlendCurrent += (grooveBlendTarget - this._grooveBlendCurrent) * t;
-        const grooveBlend = this._grooveBlendCurrent;
+        const t = 1 - Math.exp(-12.0 * dt);
 
         // Smooth boost values toward their targets (same speed as groove)
         const targetPosBoost = blended.positionBoost || [0, 0, 0];
@@ -2002,80 +1798,27 @@ export class Core3DManager {
             }
         }
 
-        if (rhythmMod) {
-            // ═══════════════════════════════════════════════════════════════════════
-            // POSITION: Groove + Absolute gestures + Camera-relative + Accent boosts
-            // ═══════════════════════════════════════════════════════════════════════
-            // 1. Groove offset (scaled by grooveBlend)
-            const grooveOffsetX = rhythmMod.grooveOffset[0] * grooveBlend;
-            const grooveOffsetY = rhythmMod.grooveOffset[1] * grooveBlend;
-            const grooveOffsetZ = rhythmMod.grooveOffset[2] * grooveBlend;
-
-            // 2. Absolute gesture position (with rhythm multiplier)
-            const posMult = hasAbsolute ? rhythmMod.positionMultiplier : 1.0;
-
-            // 3. Combine: gesture + camera-relative + groove + smoothed boost
-            this.position[0] = blended.position[0] * posMult + camRelWorldX + grooveOffsetX + posBoost[0];
-            this.position[1] = blended.position[1] * posMult + camRelWorldY + grooveOffsetY + posBoost[1];
-            this.position[2] = blended.position[2] * posMult + camRelWorldZ + grooveOffsetZ + posBoost[2];
-
-            // ═══════════════════════════════════════════════════════════════════════
-            // ROTATION: Groove sway + Absolute gestures + Accent boosts
-            // (Camera-relative rotation is applied via cameraRoll in renderer)
-            // ═══════════════════════════════════════════════════════════════════════
-            this.rotation[0] = blended.rotation[0] + rhythmMod.grooveRotation[0] * grooveBlend + rotBoost[0];
-            this.rotation[1] = blended.rotation[1] + rhythmMod.grooveRotation[1] * grooveBlend + rotBoost[1];
-            this.rotation[2] = blended.rotation[2] + rhythmMod.grooveRotation[2] * grooveBlend + rotBoost[2];
-
-            // ═══════════════════════════════════════════════════════════════════════
-            // SCALE: Groove pulse × Absolute gestures × Accent boost (smoothed)
-            // ═══════════════════════════════════════════════════════════════════════
-            // grooveScale oscillates around 1.0, so we lerp toward 1.0 when reduced
-            const grooveScaleEffect = 1.0 + (rhythmMod.grooveScale - 1.0) * grooveBlend;
-            const scaleMult = hasAbsolute ? rhythmMod.scaleMultiplier : 1.0;
-
-            this.scale = blended.scale * grooveScaleEffect * scaleMult * scaleBoost;
-            // Non-uniform scale (squash/stretch) - apply rhythm multipliers
-            if (blended.nonUniformScale) {
-                const totalMult = grooveScaleEffect * scaleMult * scaleBoost;
-                this._nonUniformScaleBuf[0] = blended.nonUniformScale[0] * totalMult;
-                this._nonUniformScaleBuf[1] = blended.nonUniformScale[1] * totalMult;
-                this._nonUniformScaleBuf[2] = blended.nonUniformScale[2] * totalMult;
-                this.nonUniformScale = this._nonUniformScaleBuf;
-            } else {
-                this.nonUniformScale = null;
-            }
+        // (Camera-relative rotation is applied via cameraRoll in renderer)
+        this.position[0] = blended.position[0] + camRelWorldX + posBoost[0];
+        this.position[1] = blended.position[1] + camRelWorldY + posBoost[1];
+        this.position[2] = blended.position[2] + camRelWorldZ + posBoost[2];
+        this.rotation[0] = blended.rotation[0] + rotBoost[0];
+        this.rotation[1] = blended.rotation[1] + rotBoost[1];
+        this.rotation[2] = blended.rotation[2] + rotBoost[2];
+        this.scale = blended.scale * scaleBoost;
+        // Non-uniform scale (squash/stretch) - apply scale boost
+        if (blended.nonUniformScale) {
+            this._nonUniformScaleBuf[0] = blended.nonUniformScale[0] * scaleBoost;
+            this._nonUniformScaleBuf[1] = blended.nonUniformScale[1] * scaleBoost;
+            this._nonUniformScaleBuf[2] = blended.nonUniformScale[2] * scaleBoost;
+            this.nonUniformScale = this._nonUniformScaleBuf;
         } else {
-            // No rhythm - apply gestures + camera-relative with smoothed boosts
-            // (Camera-relative rotation is applied via cameraRoll in renderer)
-            this.position[0] = blended.position[0] + camRelWorldX + posBoost[0];
-            this.position[1] = blended.position[1] + camRelWorldY + posBoost[1];
-            this.position[2] = blended.position[2] + camRelWorldZ + posBoost[2];
-            this.rotation[0] = blended.rotation[0] + rotBoost[0];
-            this.rotation[1] = blended.rotation[1] + rotBoost[1];
-            this.rotation[2] = blended.rotation[2] + rotBoost[2];
-            this.scale = blended.scale * scaleBoost;
-            // Non-uniform scale (squash/stretch) - apply scale boost
-            if (blended.nonUniformScale) {
-                this._nonUniformScaleBuf[0] = blended.nonUniformScale[0] * scaleBoost;
-                this._nonUniformScaleBuf[1] = blended.nonUniformScale[1] * scaleBoost;
-                this._nonUniformScaleBuf[2] = blended.nonUniformScale[2] * scaleBoost;
-                this.nonUniformScale = this._nonUniformScaleBuf;
-            } else {
-                this.nonUniformScale = null;
-            }
+            this.nonUniformScale = null;
         }
 
         // Only apply blended glow if no manual override is active
         if (this.glowIntensityOverride === null) {
-            if (rhythmMod) {
-                // Blend groove glow with gesture glow multiplier
-                const grooveGlowEffect = 1.0 + (rhythmMod.grooveGlow - 1.0) * grooveBlend;
-                const glowMult = hasAbsolute ? rhythmMod.glowMultiplier : 1.0;
-                this.glowIntensity = blended.glowIntensity * grooveGlowEffect * glowMult;
-            } else {
-                this.glowIntensity = blended.glowIntensity;
-            }
+            this.glowIntensity = blended.glowIntensity;
         }
         this.gestureQuaternion = blended.gestureQuaternion;
         this.glowBoost = blended.glowBoost || 0; // For isolated glow layer
@@ -4417,11 +4160,7 @@ export class Core3DManager {
         // Clean up core mesh reference
         this.coreMesh = null;
 
-        // Clean up rhythm engine reference
-        this.rhythmEngine = null;
 
-        // Clean up rhythm 3D adapter (don't destroy singleton, just clear reference)
-        this.rhythm3DAdapter = null;
 
         // Clean up emotive engine reference
         this.emotiveEngine = null;
@@ -4433,48 +4172,6 @@ export class Core3DManager {
         GeometryCache.dispose();
     }
 
-    /**
-     * Map emotion to appropriate groove preset
-     * Energetic emotions use bounce groove, calm emotions use subtle groove,
-     * flowing emotions use the flowing groove
-     * @private
-     * @param {string} emotion - Emotion name
-     * @returns {string} Groove preset name
-     */
-    _getEmotionGroove(emotion) {
-        const emotionGrooveMap = {
-            // Energetic emotions → groove2 (bouncy, energetic)
-            happy: 'groove2',
-            excited: 'groove2',
-            amused: 'groove2',
-            silly: 'groove2',
-            surprised: 'groove2',
-
-            // Calm/subtle emotions → groove1 (subtle, elegant)
-            calm: 'groove1',
-            neutral: 'groove1',
-            sad: 'groove1',
-            content: 'groove1',
-            focused: 'groove1',
-            bored: 'groove1',
-            tired: 'groove1',
-            sleepy: 'groove1',
-
-            // Flowing emotions → groove3 (flowing)
-            love: 'groove3',
-            grateful: 'groove3',
-            inspired: 'groove3',
-            hopeful: 'groove3',
-            proud: 'groove3',
-
-            // Intense emotions → groove2 with strong beats
-            angry: 'groove2',
-            anxious: 'groove2',
-            determined: 'groove2',
-        };
-
-        return emotionGrooveMap[emotion] || 'groove1';
-    }
 
     /**
      * Spawn 3D instanced elements with signature-based dedup.
