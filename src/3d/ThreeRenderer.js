@@ -19,13 +19,16 @@ const LINK_POLL_MS = 10;
 // Safety cap for whenCompilesSettled(); pollers stop at beginClose(), so it is never reached.
 const COMPILE_TIMEOUT_MS = 20000;
 
+/** Default camera distance: the crystal fills ~half the stage height. */
+export const DEFAULT_CAMERA_DISTANCE = 1.3;
+
 export class ThreeRenderer {
     /**
      * @param {HTMLCanvasElement} canvas
      * @param {Object} [options]
      * @param {number} [options.maxPixelRatio=2]
      * @param {boolean} [options.debugShaders=false] - check shader compile errors (sync, slow)
-     * @param {number} [options.cameraDistance=3]
+     * @param {number} [options.cameraDistance=1.3]
      * @param {number} [options.fov=45]
      */
     constructor(canvas, options = {}) {
@@ -73,7 +76,8 @@ export class ThreeRenderer {
 
         const fov = options.fov !== undefined ? options.fov : 45;
         this.camera = new THREE.PerspectiveCamera(fov, canvas.width / canvas.height, 0.1, 100);
-        this.cameraDistance = options.cameraDistance !== undefined ? options.cameraDistance : 3;
+        // 1.3: the gem fills about half the stage height (the host sizes the canvas).
+        this.cameraDistance = options.cameraDistance !== undefined ? options.cameraDistance : DEFAULT_CAMERA_DISTANCE;
         this.camera.position.set(0, 0, this.cameraDistance);
         this.camera.lookAt(0, 0, 0);
 
