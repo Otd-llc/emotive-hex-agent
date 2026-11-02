@@ -992,6 +992,17 @@ export class Core3DManager {
     }
 
     /**
+     * Turn the crystal about its own vertical axis by `rad` over `ms`, eased in and out. The
+     * turn adds to the ambient spin and stays (no spring back). A new turn replaces a running
+     * one from where it is.
+     * @param {number} rad
+     * @param {number} ms
+     */
+    turn(rad, ms) {
+        this._turnRamp = { rad, ms: Math.max(1, ms), t: 0, e: 0 };
+    }
+
+    /**
      * Ramp the crystal's in-shader glow (uGlow) to `level` over `ms`.
      * @param {number} level - 1 = rest
      * @param {number} ms
@@ -1287,6 +1298,16 @@ export class Core3DManager {
             this.behaviorController.update(frozenDeltaTime, this.baseEuler);
         } else {
             this.behaviorController.update(deltaTime, this.baseEuler);
+        }
+
+        // Host-driven turn (turn): an eased yaw added on top of the ambient spin, kept after.
+        const tr = this._turnRamp;
+        if (tr) {
+            tr.t = Math.min(1, tr.t + deltaTime / tr.ms);
+            const e = tr.t * tr.t * (3 - 2 * tr.t);
+            this.baseEuler[1] += (e - tr.e) * tr.rad;
+            tr.e = e;
+            if (tr.t >= 1) this._turnRamp = null;
         }
 
         // Set wobble enabled based on freeze (temporarily disable during hold)

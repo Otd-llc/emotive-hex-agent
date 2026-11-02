@@ -29,6 +29,8 @@ import { ELECTRIC_SETS } from './effects/electricSets.js';
 
 /** setGlow() never completes a change faster than this (flash safety). */
 export const GLOW_MIN_MS = 250;
+/** turn() never completes faster than this: a turn is a calm move, never a flick. */
+export const TURN_MIN_MS = 400;
 /**
  * An element gesture (shock, electricflourish) fired before its pool has linked waits this long
  * at most, then is dropped: a late arc for a moment that has passed reads as a glitch.
@@ -554,6 +556,20 @@ export class EmotiveMascot3D {
     setGlow(level, ms = GLOW_MIN_MS) {
         if (!this.core3D || !Number.isFinite(level)) return;
         this.core3D.setGlow(level, Math.max(GLOW_MIN_MS, Number(ms) || 0));
+    }
+
+    /**
+     * Turn the gem about its own vertical axis by `rad` radians over `ms` (eased in and out,
+     * never quicker than TURN_MIN_MS). The turn adds to the emotion's ambient spin and stays:
+     * nothing springs back, so a slow quarter turn reads as one deliberate move.
+     * @param {number} rad
+     * @param {number} [ms=900]
+     * @returns {EmotiveMascot3D}
+     */
+    turn(rad, ms = 900) {
+        if (this._isDestroyed() || !this.core3D || !Number.isFinite(rad)) return this;
+        this.core3D.turn(rad, Math.max(TURN_MIN_MS, Number(ms) || 0));
+        return this;
     }
 
     /**
