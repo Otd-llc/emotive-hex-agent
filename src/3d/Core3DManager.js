@@ -114,19 +114,10 @@ export class Core3DManager {
 
         // Initialize Three.js renderer
         this.renderer = new ThreeRenderer(canvas, {
-            enablePostProcessing: options.enablePostProcessing !== false,
-            enableShadows: options.enableShadows || false,
-            enableControls: options.enableControls !== false, // Camera controls (mouse/touch)
-            autoRotate: options.autoRotate !== false,
-            autoRotateSpeed: options.autoRotateSpeed, // Auto-rotate speed (undefined = default 0.5)
             cameraDistance: options.cameraDistance, // Camera Z distance (undefined = default 3)
             fov: options.fov, // Field of view (undefined = default 45)
-            minZoom: options.minZoom, // Minimum zoom distance
-            maxZoom: options.maxZoom, // Maximum zoom distance
-            assetBasePath: this.assetBasePath, // Base path for HDRI and other assets
             maxPixelRatio: options.maxPixelRatio, // DPR cap (undefined = default 2.0)
-            hdri: options.hdri, // false = skip the optional HDRI request
-            glowHalo: options.glowHalo, // false = no screen-space glow halo
+            debugShaders: options.debugShaders === true, // sync shader error checks (gates)
         });
 
 

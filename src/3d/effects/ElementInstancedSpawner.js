@@ -546,7 +546,8 @@ export class ElementInstancedSpawner {
         if (Array.isArray(mode)) {
             // Ensure pool is initialized first
             const pool = await this.initializePool(elementType);
-            if (!pool) {
+            // The spawner (or this pool) may have been disposed while the pool linked.
+            if (!pool || !pool.mesh || this._disposed) {
                 return [];
             }
 
@@ -624,6 +625,7 @@ export class ElementInstancedSpawner {
             // Spawn each layer
             const allIds = [];
             for (let layerIndex = 0; layerIndex < mode.length; layerIndex++) {
+                if (this._disposed || !pool.mesh) return allIds;
                 const layerConfig = mode[layerIndex];
                 const layerIds = await this._spawnLayer(elementType, layerConfig, {
                     layerIndex,
@@ -642,7 +644,8 @@ export class ElementInstancedSpawner {
 
         // Ensure pool is initialized
         const pool = await this.initializePool(elementType);
-        if (!pool) {
+        // The spawner (or this pool) may have been disposed while the pool linked.
+        if (!pool || !pool.mesh || this._disposed) {
             return [];
         }
 

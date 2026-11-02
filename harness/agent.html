@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hex Agent harness</title>
+<style>
+  :root { --field-dark: #0b1020; --field-light: #f3eee2; }
+  html, body { margin: 0; height: 100%; background: var(--field-dark); }
+  body.light { background: var(--field-light); }
+  #stage { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+</style>
+<script type="importmap">{ "imports": { "three": "/three.module.js", "three/": "/node_modules/three/" } }</script>
+<link rel="icon" href="data:,">
+</head>
+<body>
+<div id="stage"></div>
+<script type="module">
+/*
+ * Browser harness for emotive-hex-agent gates. Loads the BUILT engine (dist/), mounts the
+ * gem into #stage and exposes window.H for playwright-driven gates. Probes (contexts,
+ * getProgramParameter, timers) are installed before the engine loads.
+ */
+const ENGINE_URL = /\/dist\/emotive-hex-agent\.js|\/three\.module\.js|\/node_modules\/three\//;
+
+// ---- probes -------------------------------------------------------------------------
+const probe = {
+    contexts: [],          // { gl, closed: bool, callsAfterClose: number }
+    timers: new Map(),     // id -> { kind, stack }
+    rafs: new Map(),
+    errors: [],
+};
+const engineStack = () => {
+    const s = new Error().stack || '';
+    return ENGINE_URL.test(s) ? s : null;
+};
+const origGetContext = HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+    const gl = origGetContext.call(this, type, attrs);
+    if (gl && type === 'webgl2' && this.id && this.id.endsWith('-3d') && !probe.contexts.some(c => c.gl === gl)) {
+        const rec = { gl, closed: false, callsAfterClose: 0, canvas: this };
+        const orig = gl.getProgramParameter.bind(gl);
+        gl.getProgramParameter = (...a) => {
+            if (rec.closed) rec.callsAfterClose++;
+            return orig(...a);
+        };
+        probe.contexts.push(rec);
+    }
+    return gl;
+};
+const oSetTimeout = window.setTimeout, oClearTimeout = window.clearTimeout;
+const oSetInterval = window.setInterval, oClearInterval = window.clearInterval;
+const oRaf = window.requestAnimationFrame, oCaf = window.cancelAnimationFrame;
+window.setTimeout = function (fn, ms, ...a) {
+    const stack = engineStack();
+    let id;
+    const wrapped = typeof fn === 'function' ? (...b) => { probe.timers.delete(id); return fn(...b); } : fn;
+    id = oSetTimeout.call(window, wrapped, ms, ...a);
+    if (stack) probe.timers.set(id, { kind: 'timeout', stack });
+    return id;
+};
+window.clearTimeout = id => { probe.timers.delete(id); return oClearTimeout.call(window, id); };
+window.setInterval = function (fn, ms, ...a) {
+    const stack = engineStack();
+    const id = oSetInterval.call(window, fn, ms, ...a);
+    if (stack) probe.timers.set(id, { kind: 'interval', stack });
+    return id;
+};
+window.clearInterval = id => { probe.timers.delete(id); return oClearInterval.call(window, id); };
+window.requestAnimationFrame = function (fn) {
+    const stack = engineStack();
+    let id;
+    id = oRaf.call(window, t => { probe.rafs.delete(id); fn(t); });
+    if (stack) probe.rafs.set(id, { kind: 'raf', stack });
+    return id;
+};
+window.cancelAnimationFrame = id => { probe.rafs.delete(id); return oCaf.call(window, id); };
+window.addEventListener('error', e => probe.errors.push(String(e.message || e.error)));
+window.addEventListener('unhandledrejection', e => probe.errors.push('unhandled: ' + String(e.reason && (e.reason.stack || e.reason))));
+
+// ---- engine -----------------------------------------------------------------------------
+const params = new URLSearchParams(location.search);
+const { EmotiveMascot3D } = await import('/dist/emotive-hex-agent.js');
+const stage = document.getElementById('stage');
+const sleep = ms => new Promise(r => oSetTimeout.call(window, r, ms));
+const nextFrames = n => new Promise(r => { let k = 0; const f = () => (++k >= n ? r() : oRaf.call(window, f)); oRaf.call(window, f); });
+
+const H = {
+    probe,
+    mascot: null,
+    events: [],
+    /**
+     * @param {{ size?: number, surface?: 'dark'|'light', preset?: string, debugShaders?: boolean }} [o]
+     */
+    async mount(o = {}) {
+        const size = o.size ?? 225;
+        const surface = o.surface ?? 'dark';
+        document.body.classList.toggle('light', surface === 'light');
+        stage.style.width = stage.style.height = size + 'px';
+        const m = new EmotiveMascot3D({
+            assetBasePath: '/test/fixtures/stock',
+            coreGeometry: 'crystal',
+            surface,
+            debugShaders: o.debugShaders ?? params.has('debugShaders'),
+        });
+        H.events = [];
+        for (const ev of ['emotion:change', 'gesture:trigger', 'shape:morph', 'sss:presetChanged']) {
+            m.eventManager.on(ev, data => H.events.push({ ev, data }));
+        }
+        m.init(stage);
+        m.setSurface(surface);
+        await m.start();
+        if (o.preset !== null) m.setSSSPreset(o.preset ?? 'sapphire', { immediate: true });
+        H.mascot = m;
+        await nextFrames(6);
+        return true;
+    },
+    /** destroy; resolves when the GL context has been released; marks the context closed */
+    close() {
+        const m = H.mascot;
+        H.mascot = null;
+        if (!m) return Promise.resolve();
+        const recs = probe.contexts.filter(c => !c.closed);
+        return m.destroy().then(() => { for (const r of recs) r.closed = true; });
+    },
+    fire(name) { H.mascot.express(name); },
+    /** electric instances currently alive (arcs on screen) */
+    arcs() { return H.mascot?.core3D?.elementSpawner?.activeElements?.size ?? 0; },
+    /** resolve once the electric pool has linked (or reject after ms) */
+    async electricReady(ms = 20000) {
+        const t0 = performance.now();
+        while (!H.mascot?.core3D?.elementSpawner?.pools?.get('electricity')?.mesh) {
+            if (performance.now() - t0 > ms) throw new Error('electric pool not ready after ' + ms + ' ms');
+            await sleep(50);
+        }
+        return Math.round(performance.now() - t0);
+    },
+    /** fire a gesture and sample arcs for ms; returns the max instance count seen */
+    async fireAndWatch(name, ms) {
+        H.fire(name);
+        let max = 0;
+        const t0 = performance.now();
+        while (performance.now() - t0 < ms) { max = Math.max(max, H.arcs()); await sleep(40); }
+        return max;
+    },
+    emotion(name, undertone) { H.mascot.setEmotion(name, undertone); },
+    surface(mode) { document.body.classList.toggle('light', mode === 'light'); H.mascot.setSurface(mode); },
+    gestures() { return H.mascot.getAvailableGestures().map(g => g.name); },
+    sleep,
+    nextFrames,
+    /** pending engine timers / rAFs (attributed by stack to the engine or three) */
+    pending() {
+        return { timers: [...probe.timers.values()].map(t => t.kind + ' ' + t.stack.split('\n').slice(1, 4).join(' | ')), rafs: probe.rafs.size };
+    },
+    stageRect() { const r = stage.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; },
+};
+window.H = H;
+window.__ready = true;
+</script>
+</body>
+</html>
