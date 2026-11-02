@@ -116,6 +116,7 @@ const H = {
             debugShaders: o.debugShaders ?? params.has('debugShaders'),
             debugStep: o.debugStep === true,
             cameraDistance: o.cameraDistance,
+            electricSet: o.electricSet ?? params.get('electricSet') ?? undefined,
         });
         H.events = [];
         for (const ev of ['emotion:change', 'gesture:trigger', 'shape:morph', 'sss:presetChanged']) {

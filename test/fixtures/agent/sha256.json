@@ -47,6 +47,66 @@
         "sha256": "351f3a531a5ecdea026f8d7575930b66279df3dbffac88fb5326ed2ae84317cb",
         "bytes": 9412
     },
+    "filament-arc-small.glb": {
+        "sha256": "11dacac3245a2e3ee5101d0b1fd5bed8f31762c234c0a7a48013262589195ac8",
+        "bytes": 7888
+    },
+    "filament-arc-medium.glb": {
+        "sha256": "f9802b1f7efd365c2a481c595a1464d9e32aa1cf564cff43dcb973e2f0762a0a",
+        "bytes": 13288
+    },
+    "filament-spark-node.glb": {
+        "sha256": "e4e739fb790f7ae9ce0957c66d3c99d59fe95dfcf2de0df3df5897df08a12780",
+        "bytes": 17012
+    },
+    "filament-lightning-ring.glb": {
+        "sha256": "3e092eabc4e23c2443aab9e340ab650a5487a792334c4f6123c632da6ea65bd6",
+        "bytes": 15208
+    },
+    "filament-plasma-ring.glb": {
+        "sha256": "5f3b042a7999e900a1d320a84092f62d4b79963e23070918266fc98ca525403c",
+        "bytes": 17860
+    },
+    "corona-arc-small.glb": {
+        "sha256": "dbd852966de781855341e59e2d6920afd5ce6ecb9fed1dadcc18cc61c4c8a588",
+        "bytes": 4324
+    },
+    "corona-arc-medium.glb": {
+        "sha256": "2c90123d9b60004fe773fd2b916e80b3d6c6c7e25c8cffb21becb3ab269012de",
+        "bytes": 8752
+    },
+    "corona-spark-node.glb": {
+        "sha256": "85754d65ea28af29d867ae40a57ca873deba515f62925fb82a168592134df34f",
+        "bytes": 11084
+    },
+    "corona-lightning-ring.glb": {
+        "sha256": "09fd692b5099b2e3cf69bd1ed2fbfceba6b7a9af05734f67231e8c1dfcd1aa62",
+        "bytes": 9412
+    },
+    "corona-plasma-ring.glb": {
+        "sha256": "e57fd2d3d634bbeb121dd76a2562ecddc5d96d811593aaee5ec7f49d3c4a838b",
+        "bytes": 16520
+    },
+    "halo-arc-small.glb": {
+        "sha256": "2d3a507a586ab728581bd3cf752fb2ea4a0123feeac2afd8525b33c4f3e96e71",
+        "bytes": 4012
+    },
+    "halo-arc-medium.glb": {
+        "sha256": "e0e23782ddf3b219212bc0ab85aefab68b0deb4c8c93903d52d49dd7688a9652",
+        "bytes": 9136
+    },
+    "halo-spark-node.glb": {
+        "sha256": "7aa3baf99b30bb678609320053a1b360309008cf431b829590f8ffef2f038343",
+        "bytes": 13608
+    },
+    "halo-lightning-ring.glb": {
+        "sha256": "b33003f68b0f8b41bfd455dd88266fcc800cef8674ae509adfa2dcbb59face5a",
+        "bytes": 13084
+    },
+    "halo-plasma-ring.glb": {
+        "sha256": "6f4aae4dc696cf43270de92b8874b37c2d2d36f689538974ca60ec728a1115e2",
+        "bytes": 19604
+    },
     "hexgem-detail.webp": {
         "sha256": "ee8ca84f8a83aac324aa0b5f6ba44b423a7a2a48c5c9fa8804fbbdbda982c4f4",
         "bytes": 8524

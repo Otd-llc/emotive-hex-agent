@@ -122,6 +122,11 @@ export class ElementInstancedSpawner {
      * @param {THREE.Camera} [options.camera] - Camera for orientation calculations
      * @param {string} [options.assetsBasePath=''] - Base path for model assets
      * @param {Object} [options.renderer] - ThreeRenderer for refraction mesh registration
+     * @param {Object<string,string>} [options.modelPrefix] - per element type, a file-name prefix
+     *   (an electric set: 'filament-'); the model keeps its role name
+     * @param {Object<string,{fill?:number,surfaceScale?:number}>} [options.tune] - per element
+     *   type: `fill` set on its pool material once made, `surfaceScale` multiplying the size of
+     *   surface-spawned elements (an electric set's tune)
      */
     constructor(options = {}) {
         const {
@@ -130,6 +135,8 @@ export class ElementInstancedSpawner {
             camera = null,
             assetsBasePath = '',
             renderer = null,
+            modelPrefix = null,
+            tune = null,
         } = options;
 
         if (!scene) {
@@ -141,6 +148,8 @@ export class ElementInstancedSpawner {
         this.camera = camera;
         this.assetsBasePath = assetsBasePath;
         this._renderer = renderer;
+        this.modelPrefix = modelPrefix || {};
+        this.tune = tune || {};
 
         // Container for all element meshes
         this.container = new THREE.Group();
@@ -322,8 +331,9 @@ export class ElementInstancedSpawner {
         }
 
         // Load all models for this element type (parallel)
+        const prefix = this.modelPrefix[elementType] || '';
         const loadPromises = config.models.map(modelName => {
-            const modelPath = `${String(this.assetsBasePath).replace(/\/+$/, '')}/${config.basePath}${modelName}`;
+            const modelPath = `${String(this.assetsBasePath).replace(/\/+$/, '')}/${config.basePath}${prefix}${modelName}`;
             return this._loadGeometry(modelPath, config.modelRotation?.[modelName]).then(geometry => {
                 return geometry ? { geometry, name: modelName.replace('.glb', '') } : null;
             });
@@ -353,6 +363,8 @@ export class ElementInstancedSpawner {
 
         // Create instanced material
         const material = config.createMaterial();
+        const tune = this.tune[elementType];
+        if (tune && Number.isFinite(tune.fill) && material?.uniforms?.uFill) material.uniforms.uFill.value = tune.fill;
         this.materials.set(elementType, material);
 
         // Store original depthWrite so it can be restored between gestures
@@ -1938,7 +1950,9 @@ export class ElementInstancedSpawner {
                 surfaceConfig.scaleMultiplier ||
                 elementConfig?.scaleMultiplier ||
                 DEFAULT_SCALE_MULTIPLIER;
-            const baseScale = calculateElementScale(modelName, this.mascotRadius, scaleMultiplier);
+            const baseScale =
+                calculateElementScale(modelName, this.mascotRadius, scaleMultiplier) *
+                (this.tune[elementType]?.surfaceScale || 1);
             _temp.scale.setScalar(baseScale);
 
             // Calculate position with embed depth

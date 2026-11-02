@@ -19,6 +19,7 @@ export const CORE_REST_GLOW = 1.2;
 import * as THREE from 'three';
 import { ThreeRenderer } from './ThreeRenderer.js';
 import { assertAssetBasePath } from './utils/assetBasePath.js';
+import { electricSetPrefix, electricSetTune } from './effects/electricSets.js';
 import { THREE_GEOMETRIES } from './geometries/ThreeGeometries.js';
 import { ProceduralAnimator } from './animation/ProceduralAnimator.js';
 import { BreathingAnimator } from './animation/BreathingAnimator.js';
@@ -87,6 +88,7 @@ export class Core3DManager {
      * @param {number} [options.maxZoom] - Maximum zoom distance
      * @param {string} [options.materialVariant] - Material variant override
      * @param {string} options.assetBasePath - Base path for loading assets (required)
+     * @param {string} [options.electricSet='current'] - which electric set's meshes to load (ELECTRIC_SETS)
      * @param {string[]} [options.preloadElements] - Element types to preload immediately (e.g., ['fire', 'ice'])
      */
     constructor(canvas, options = {}) {
@@ -371,6 +373,8 @@ export class Core3DManager {
             scene: this.renderer.scene,
             assetsBasePath: this.assetBasePath,
             renderer: this.renderer,
+            modelPrefix: { electricity: electricSetPrefix(options.electricSet) },
+            tune: { electricity: electricSetTune(options.electricSet) },
         });
 
 

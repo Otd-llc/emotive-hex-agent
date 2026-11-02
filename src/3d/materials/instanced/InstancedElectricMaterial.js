@@ -377,6 +377,7 @@ void main() {
 
 const FRAGMENT_SHADER = /* glsl */ `
 uniform float uInk;          // 1 = light page: draw arcs as dark ink, not light
+uniform float uFill;         // electric set: the tube itself lit at least this much (0 = bolt network only)
 uniform vec3 uInkColor;
 uniform float uGlobalTime;
 uniform float uCharge;
@@ -444,6 +445,9 @@ void main() {
 
     // Combine — two overlapping scales create bolt network
     float lightning = min(bolt1 + bolt2, 1.0);
+    // An electric set's own mesh shows through (filament, corona, halo): the tube is lit at
+    // least uFill, the bolt network rides on top. Before the flicker, so its rate caps it too.
+    lightning = max(lightning, uFill);
 
     // ═══════════════════════════════════════════════════════════════════════════════
     // FLICKER — electrical pulsing (per-instance variation)
@@ -612,6 +616,7 @@ export function createInstancedElectricMaterial(options = {}) {
             uRelayArcWidth: { value: 3.14159 },
             uRelayFloor: { value: 0.0 },
             uInk: { value: 0 },
+            uFill: { value: 0 },
             uInkColor: { value: new THREE.Color(0x1f4f57) },
         },
         vertexShader: VERTEX_SHADER,

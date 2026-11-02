@@ -25,6 +25,7 @@ import { THREE_GEOMETRIES } from './geometries/ThreeGeometries.js';
 import { enterStepMode, exitStepMode, advance as advanceClock, now as clockNow } from './utils/clock.js';
 import { seed as seedRng } from './utils/rng.js';
 import { FLASH_SAFETY } from './flashSafety.js';
+import { ELECTRIC_SETS } from './effects/electricSets.js';
 
 /** setGlow() never completes a change faster than this (flash safety). */
 export const GLOW_MIN_MS = 250;
@@ -57,9 +58,18 @@ export class EmotiveMascot3D {
      * @param {string} config.assetBasePath - base URL of the agent assets (GLBs + detail map)
      * @param {'dark'|'light'} [config.surface] - what the transparent canvas sits on
      * @param {string} [config.look='sapphire'] - starting look (LOOKS: sapphire, quartz, ruby-violet)
+     * @param {string} [config.electricSet='current'] - the electric meshes shock and
+     *   electricflourish draw (ELECTRIC_SETS: current, filament, corona, halo); an unknown name
+     *   warns and falls back to current
      */
     constructor(config = {}) {
         assertAssetBasePath(config.assetBasePath);
+        if (config.electricSet !== undefined && !ELECTRIC_SETS.includes(config.electricSet)) {
+            console.warn(
+                `[EmotiveMascot3D] Unknown electricSet "${config.electricSet}". Valid: ${ELECTRIC_SETS.join(', ')}`
+            );
+            config = { ...config, electricSet: 'current' };
+        }
         this.config = {
             canvasId: config.canvasId || 'emotive-canvas',
             coreGeometry: config.coreGeometry || 'hexgem',
@@ -240,6 +250,7 @@ export class EmotiveMascot3D {
             maxPixelRatio: this.config.maxPixelRatio,
             debugShaders: this.config.debugShaders,
             preloadElements: this.config.preloadElements,
+            electricSet: this.config.electricSet,
         });
     }
 
@@ -759,6 +770,16 @@ export class EmotiveMascot3D {
     /** @returns {string[]} look names setLook accepts */
     getAvailableLooks() {
         return Object.keys(LOOKS);
+    }
+
+    /** @returns {string[]} the electric sets (constructor option `electricSet`) */
+    getAvailableElectricSets() {
+        return [...ELECTRIC_SETS];
+    }
+
+    /** @returns {string} the electric set this instance draws */
+    getElectricSet() {
+        return this.config.electricSet ?? 'current';
     }
 
     /**

@@ -83,6 +83,111 @@
         "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
         "source": "generated, no third-party inputs"
     },
+    "filament-arc-small.glb": {
+        "generator": "tools/agent/blender/electric.py set=filament shape=arc-small",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "filament-arc-medium.glb": {
+        "generator": "tools/agent/blender/electric.py set=filament shape=arc-medium",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "filament-spark-node.glb": {
+        "generator": "tools/agent/blender/electric.py set=filament shape=spark-node",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "filament-lightning-ring.glb": {
+        "generator": "tools/agent/blender/electric.py set=filament shape=lightning-ring",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "filament-plasma-ring.glb": {
+        "generator": "tools/agent/blender/electric.py set=filament shape=plasma-ring",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "corona-arc-small.glb": {
+        "generator": "tools/agent/blender/electric.py set=corona shape=arc-small",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "corona-arc-medium.glb": {
+        "generator": "tools/agent/blender/electric.py set=corona shape=arc-medium",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "corona-spark-node.glb": {
+        "generator": "tools/agent/blender/electric.py set=corona shape=spark-node",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "corona-lightning-ring.glb": {
+        "generator": "tools/agent/blender/electric.py set=corona shape=lightning-ring",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "corona-plasma-ring.glb": {
+        "generator": "tools/agent/blender/electric.py set=corona shape=plasma-ring",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "halo-arc-small.glb": {
+        "generator": "tools/agent/blender/electric.py set=halo shape=arc-small",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "halo-arc-medium.glb": {
+        "generator": "tools/agent/blender/electric.py set=halo shape=arc-medium",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "halo-spark-node.glb": {
+        "generator": "tools/agent/blender/electric.py set=halo shape=spark-node",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "halo-lightning-ring.glb": {
+        "generator": "tools/agent/blender/electric.py set=halo shape=lightning-ring",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
+    "halo-plasma-ring.glb": {
+        "generator": "tools/agent/blender/electric.py set=halo shape=plasma-ring",
+        "built_by": "tools/agent/build.mjs",
+        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
+        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
+        "source": "generated, no third-party inputs"
+    },
     "hexgem-detail.webp": {
         "generator": "tools/agent/blender/detail.py",
         "built_by": "tools/agent/build.mjs",
