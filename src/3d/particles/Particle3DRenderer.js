@@ -29,6 +29,16 @@
 
 import * as THREE from 'three';
 import { isCrystalFamily } from '../geometries/ThreeGeometries.js';
+import { getSurface, onSurfaceChange } from '../materials/surface.js';
+
+/**
+ * Sprite scale. gl_PointSize is in DRAWING-BUFFER pixels, so the size multiplies by the pixel
+ * ratio (the stock shader divided by it: on a DPR 2 phone every sprite drew at a quarter of its
+ * CSS size). The stage term is sub-linear (pow 0.6) so a 104 px phone crystal keeps readable
+ * sparks instead of shrinking them in proportion with the gem.
+ */
+export const PARTICLE_SIZE_K = 0.6;
+export const PARTICLE_STAGE_EXP = 0.6;
 
 // Define shaders inline (avoid import issues with .glsl files)
 const particleVertexShader = `
@@ -48,6 +58,8 @@ attribute float style;  // 0.0 = solid/gradient, 1.0 = cell-shaded (ring with tr
 uniform float coreScale;
 uniform float viewportHeight;
 uniform float pixelRatio;
+uniform float sizeK;
+uniform float stageExp;
 
 // Varying to fragment shader
 varying vec3 vColor;
@@ -66,7 +78,7 @@ void main() {
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
 
     // Calculate point size with perspective scaling
-    float perspectiveScale = coreScale * (75.0 / length(mvPosition.xyz)) * (viewportHeight / 600.0) / pixelRatio;
+    float perspectiveScale = coreScale * (75.0 / length(mvPosition.xyz)) * pow(viewportHeight / 600.0, stageExp) * pixelRatio * sizeK;
     gl_PointSize = size * perspectiveScale;
 
     // Final position
@@ -79,6 +91,8 @@ const particleFragmentShader = `
  * Particle Fragment Shader - Solid colored circles matching 2D appearance
  * Uses premultiplied alpha for proper blending
  */
+
+uniform float uSurface;   // 0 = dark page, 1 = light page
 
 varying vec3 vColor;
 varying float vAlpha;
@@ -93,15 +107,16 @@ void main() {
 
     // In-shader glow (no bloom pass in this build): a soft core plus a gaussian halo that
     // falls to ~0 at the sprite edge, so sprites never show a square or a hard rim.
-    float core = 1.0 - smoothstep(0.10, 0.24, dist);
-    float halo = exp(-dist * dist * 22.0);
-    float shape = vStyle > 0.5
-        // cell-shaded: a soft ring with a lit halo
-        ? max(smoothstep(0.20, 0.28, dist) * (1.0 - smoothstep(0.34, 0.44, dist)), halo * 0.35)
-        : max(core, halo * 0.6);
+    // Every sprite is a spark (the stock cell-shaded RING read as an oversized bokeh ring);
+    // the cell-shaded third only gets a tighter, hotter core.
+    float coreR = vStyle > 0.5 ? 0.13 : 0.18;
+    float core = 1.0 - smoothstep(coreR * 0.45, coreR, dist);
+    float halo = exp(-dist * dist * 26.0);
+    float shape = max(core, halo * 0.55);
 
-    vec3 finalColor = vColor;
-    float alpha = vAlpha * shape;
+    // A light page: the spark is ink of its own hue (a pale additive dot vanishes on cream).
+    vec3 finalColor = mix(vColor, vColor * 0.5, uSurface);
+    float alpha = min(vAlpha * 1.5, 1.0) * shape;
 
     // Gesture glow boost
     if (vGlowIntensity >= 2.0) {
@@ -211,6 +226,9 @@ export class Particle3DRenderer {
                 coreScale: { value: 1.0 }, // Core scale multiplier (baseScale * breath * morph * blink)
                 viewportHeight: { value: 600.0 }, // Viewport height for screen-size compensation
                 pixelRatio: { value: 1.0 }, // Device pixel ratio for consistent sizing
+                sizeK: { value: PARTICLE_SIZE_K },
+                stageExp: { value: PARTICLE_STAGE_EXP },
+                uSurface: { value: getSurface() === 'light' ? 1 : 0 },
             },
             vertexShader: particleVertexShader,
             fragmentShader: particleFragmentShader,
@@ -230,6 +248,11 @@ export class Particle3DRenderer {
      * Initialize THREE.Points object
      */
     _initPoints() {
+        // setSurface() reaches live particles; dropped with the material.
+        this._offSurface = onSurfaceChange(mode => {
+            this.material.uniforms.uSurface.value = mode === 'light' ? 1 : 0;
+        });
+
         this.points = new THREE.Points(this.geometry, this.material);
         // PERFORMANCE: Enable frustum culling for desktop (5-15% gain when particles off-screen)
         this.points.frustumCulled = true;
@@ -550,6 +573,8 @@ export class Particle3DRenderer {
         if (this.geometry) {
             this.geometry.dispose();
         }
+        this._offSurface?.();
+        this._offSurface = null;
         if (this.material) {
             this.material.dispose();
         }

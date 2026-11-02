@@ -26,6 +26,30 @@ describe('particle fragment shader', () => {
     });
 });
 
+describe('particle size and surface (round 2: the particles were invisible on phones)', () => {
+    const vs = () => new Particle3DRenderer(10).material.vertexShader;
+    it('gl_PointSize is in drawing-buffer pixels: it multiplies by the pixel ratio', () => {
+        expect(vs()).toMatch(/\* pixelRatio \* sizeK/);
+        expect(vs()).not.toMatch(/\/ pixelRatio/);
+    });
+    it('no sprite is drawn as a hollow ring (the stock bokeh ring)', () => {
+        expect(fs()).not.toMatch(/smoothstep\(0\.20, 0\.28, dist\)/);
+    });
+    it('follows the page surface live (ink sparks on a light page)', async () => {
+        const { setSurface } = await import('../../../src/3d/materials/surface.js');
+        const r = new Particle3DRenderer(10);
+        expect(fs()).toMatch(/uniform float uSurface;/);
+        setSurface('light');
+        expect(r.material.uniforms.uSurface.value).toBe(1);
+        setSurface('dark');
+        expect(r.material.uniforms.uSurface.value).toBe(0);
+        r.dispose();
+        setSurface('light');
+        expect(r.material.uniforms.uSurface.value).toBe(0);
+        setSurface('dark');
+    });
+});
+
 describe('per-emotion behaviour kept', () => {
     it('different emotions keep different particle behaviours', () => {
         const c = new ParticleEmotionCalculator();
