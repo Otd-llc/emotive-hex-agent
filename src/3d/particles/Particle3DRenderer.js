@@ -86,19 +86,22 @@ varying float vGlowIntensity;
 varying float vStyle;
 
 void main() {
-    // Distance from center (0 at center, 0.5 at edge)
+    // Distance from center (0 at center, 0.5 at the sprite edge)
     vec2 center = gl_PointCoord - vec2(0.5);
     float dist = length(center);
+    if (dist > 0.5) discard;
 
-    // Hard circle cutoff - discard everything outside
-    if (dist > 0.45) {
-        discard;
-    }
+    // In-shader glow (no bloom pass in this build): a soft core plus a gaussian halo that
+    // falls to ~0 at the sprite edge, so sprites never show a square or a hard rim.
+    float core = 1.0 - smoothstep(0.10, 0.24, dist);
+    float halo = exp(-dist * dist * 22.0);
+    float shape = vStyle > 0.5
+        // cell-shaded: a soft ring with a lit halo
+        ? max(smoothstep(0.20, 0.28, dist) * (1.0 - smoothstep(0.34, 0.44, dist)), halo * 0.35)
+        : max(core, halo * 0.6);
 
     vec3 finalColor = vColor;
-
-    // Base opacity from particle (already includes baseOpacity variation)
-    float alpha = vAlpha;
+    float alpha = vAlpha * shape;
 
     // Gesture glow boost
     if (vGlowIntensity >= 2.0) {
@@ -108,12 +111,14 @@ void main() {
     }
 
     // Cell-shaded particles are slightly more opaque
-    float opacityBoost = vStyle > 0.5 ? 1.0 : 0.85;
-    alpha *= opacityBoost;
+    alpha *= vStyle > 0.5 ? 1.0 : 0.85;
 
-    // Output with proper alpha for blending
-    // Premultiply alpha for correct compositing
-    gl_FragColor = vec4(finalColor * alpha, alpha);
+    // Tone map + sRGB encode here (no post pass), THEN premultiply for the One /
+    // OneMinusSrcAlpha blend.
+    gl_FragColor = vec4(finalColor, alpha);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+    gl_FragColor.rgb *= gl_FragColor.a;
 }
 `;
 
