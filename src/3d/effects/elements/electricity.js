@@ -6,9 +6,7 @@
  * @module effects/elements/electricity
  */
 
-import * as THREE from 'three';
 import { ElementTypeRegistry } from '../ElementTypeRegistry.js';
-import { createFireDistortionMaterial } from '../../materials/DistortionMaterials.js';
 
 import {
     createInstancedElectricMaterial,
@@ -54,15 +52,6 @@ ElementTypeRegistry.register('electricity', {
     setRelay: setElectricRelay,
     resetRelay: resetElectricRelay,
     scaleMultiplier: 1.3,
-    distortion: {
-        geometry: () => new THREE.PlaneGeometry(1.0, 1.0),
-        material: createFireDistortionMaterial,
-        transform: {
-            padding: new THREE.Vector3(0.3, 0.3, 0.3),
-        },
-        billboard: true,
-        strength: 0.003,
-    },
 });
 
 export { ElementTypeRegistry };

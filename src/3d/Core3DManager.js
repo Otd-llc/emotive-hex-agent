@@ -394,15 +394,6 @@ export class Core3DManager {
             renderer: this.renderer,
         });
 
-        // Wire distortion manager from ThreeRenderer to spawner
-        if (this.renderer?.distortionManager) {
-            this.elementSpawner.setDistortionManager(this.renderer.distortionManager);
-        }
-
-        // Wire particle atmospherics manager from ThreeRenderer to spawner
-        if (this.renderer?.particleAtmospherics) {
-            this.elementSpawner.setParticleAtmospherics(this.renderer.particleAtmospherics);
-        }
 
         // Initialize with core mesh and camera if available
         // NOTE: Models are NOT preloaded here - they load lazily on first spawn
@@ -556,8 +547,6 @@ export class Core3DManager {
         this.blinkAnimator.setEmotion(emotion);
 
 
-        // Immediately reset bloom to prevent accumulation (fast transition on emotion change)
-        this.renderer.updateBloom(this.baseGlowIntensity, 1.0, this.geometryType);
 
         // Trigger emotion animation - now handled by blending system in render()
         this.animator.playEmotion(emotion);
@@ -1828,38 +1817,21 @@ export class Core3DManager {
         const opacity = virtualParticle?.opacity ?? 1.0;
         const effectiveGlowIntensity = baseIntensity * opacity;
 
-        // Update bloom pass with effective glow intensity (smooth transitions)
-        // Use faster transition during geometry morphs for quicker bloom adaptation
-        const bloomTransitionSpeed = morphState.isTransitioning ? 0.3 : 0.1;
-        this.renderer.updateBloom(effectiveGlowIntensity, bloomTransitionSpeed, this.geometryType, this._morphBloomFlash);
 
         // Update element material bloom thresholds to match mascot's bloom settings
         // This prevents water/fire etc from blowing out on low-threshold geometries (crystal/heart)
         if (this.elementSpawner) {
-            let elementBloomThreshold = 0.85; // Default for moon/star/sphere
-            if (this.geometryType === 'sun') {
-                elementBloomThreshold = 0.3;
-            } else if (
+            let elementBloomThreshold = 0.85;
+            if (
                 this.geometryType === 'crystal' ||
                 this.geometryType === 'rough' ||
                 this.geometryType === 'heart'
             ) {
                 elementBloomThreshold = 0.35;
             }
-            this.elementSpawner.setElementBloomThreshold('water', elementBloomThreshold);
-            this.elementSpawner.setElementBloomThreshold('ice', elementBloomThreshold);
             this.elementSpawner.setElementBloomThreshold('electricity', elementBloomThreshold);
-            this.elementSpawner.setElementBloomThreshold('earth', elementBloomThreshold);
-            this.elementSpawner.setElementBloomThreshold('nature', elementBloomThreshold);
         }
 
-        // Update isolated glow layer for gesture effects (glow/flash)
-        // This is a separate screen-space effect that doesn't affect baseline appearance
-        if (this.glowBoost > 0 || (this.renderer.glowLayer && this.renderer.glowLayer.isActive())) {
-            // Get world position of core mesh for glow center
-            const worldPosition = this.coreMesh?.position;
-            this.renderer.updateGlowLayer(this.glowBoost, this.glowColor, worldPosition, deltaTime);
-        }
 
 
 

@@ -16,11 +16,7 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const S = (p) => path.resolve(ROOT, 'src', p);
 
 /** Source modules stubbed at build time (paths relative to src/). Empty once deletion is done. */
-export const STUBS = [
-    '3d/effects/ParticleAtmosphericsManager.js',
-    '3d/AmbientOcclusionPass.js', '3d/effects/VelocityMotionBlurPass.js', '3d/UnrealBloomPassAlpha.js',
-    '3d/effects/CrackLayer.js',
-].map(S);
+export const STUBS = [].map(S);
 
 const isStubbed = (abs) => STUBS.includes(abs);
 

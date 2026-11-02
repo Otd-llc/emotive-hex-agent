@@ -522,10 +522,15 @@ void main() {
         // as ink (normal blending), its opacity carried by the bolt's brightness.
         float ink = clamp(max(max(color.r, color.g), color.b), 0.0, 1.0);
         gl_FragColor = vec4(uInkColor, clamp(alpha * (0.55 + 0.45 * ink), 0.0, 0.9));
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
         return;
     }
 
     gl_FragColor = vec4(color, alpha);
+    // Encode here: there is no post pass to tone-map and sRGB-encode (fix c).
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
 }
 `;
 

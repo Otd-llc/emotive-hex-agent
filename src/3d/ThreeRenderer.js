@@ -1,181 +1,103 @@
 /**
- * ThreeRenderer - Three.js-based WebGL rendering engine
+ * ThreeRenderer, hex-agent edition.
  *
- * Replaces custom WebGL renderer with Three.js for:
- * - Better lighting (three-point lighting system)
- * - Post-processing effects (bloom, glow)
- * - Advanced materials and shaders
- * - Model loading capabilities (GLTF/GLB)
- * - Real-time shadows
- * - GPU-accelerated particles
+ * Derived from the Emotive Engine ThreeRenderer (MIT, Joshua Tollette). ONE render path, no
+ * post-processing: the soul (layer 2) is drawn into its own render target sized to the
+ * drawing buffer, the camera goes back to layer 0, then the scene (layer 0) and the particles
+ * (layer 1) are drawn straight to the canvas. The crystal and electric shaders apply three's
+ * tone mapping and sRGB output themselves, so nothing depends on a composer.
  *
- * @module ThreeRenderer
+ * Deleted from the engine version: EffectComposer, bloom, AO, motion blur, distortion pass,
+ * glow halo layer, crack layer, particle bloom, ice refraction, HDRI/env map/glass material,
+ * OrbitControls and camera presets.
  */
 
 import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { UnrealBloomPassAlpha } from './UnrealBloomPassAlpha.js';
-import { DistortionShader } from './DistortionPass.js';
-import { AmbientOcclusionPass } from './AmbientOcclusionPass.js';
-import { VelocityMotionBlurPass } from './effects/VelocityMotionBlurPass.js';
-import { DistortionManager } from './effects/DistortionManager.js';
-import { ParticleAtmosphericsManager } from './effects/ParticleAtmosphericsManager.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-// normalizeColorLuminance - available for advanced color normalization
-import { GlowLayer } from './effects/GlowLayer.js';
-import { getSurface } from './materials/surface.js';
-import { CrackLayer } from './effects/CrackLayer.js';
-import { CameraPresetManager } from './managers/CameraPresetManager.js';
 
-// Upper bound on a single shader pre-link. The heaviest element shaders take a few
-// seconds on ANGLE/D3D; past this we stop waiting rather than wedge the caller.
+// Upper bound on a single shader pre-link. Past this we stop waiting rather than wedge the
+// caller; the program still links lazily on first render.
 const COMPILE_TIMEOUT_MS = 20000;
 
 export class ThreeRenderer {
+    /**
+     * @param {HTMLCanvasElement} canvas
+     * @param {Object} [options]
+     * @param {number} [options.maxPixelRatio=2]
+     * @param {boolean} [options.debugShaders=false] - check shader compile errors (sync, slow)
+     * @param {number} [options.cameraDistance=3]
+     * @param {number} [options.fov=45]
+     */
     constructor(canvas, options = {}) {
         this.canvas = canvas;
         this.options = options;
         this._destroyed = false;
 
-        // Asset base path for loading HDRI and other resources
-        // Can be configured for GitHub Pages, CDN, or other hosting scenarios
-        this.assetBasePath = options.assetBasePath || '';
-        // options.hdri === false skips the optional studio HDRI request (1.7 MB) and
-        // goes straight to the procedural environment map.
-        this.hdriEnabled = options.hdri !== false;
-        // options.glowHalo === false skips the screen-space GlowLayer halo. It is sized to
-        // the canvas, so on a canvas that bleeds past its slot it reads as a lit rectangle.
-        this.glowHalo = options.glowHalo !== false;
-
-        // Create Three.js scene
         this.scene = new THREE.Scene();
-        this.scene.background = null; // Transparent background for particle overlay
+        this.scene.background = null;
 
-        // Create WebGL renderer with high precision to reduce banding
         this.renderer = new THREE.WebGLRenderer({
             canvas,
-            alpha: true, // Transparent background
-            premultipliedAlpha: true, // With CustomBlending on bloom, avoids double-darkening on CSS composite
-            antialias: false, // DIAGNOSTIC: Disabled to test if MSAA causes dark edges
+            alpha: true,
+            premultipliedAlpha: true,
+            antialias: false,
             powerPreference: 'high-performance',
             preserveDrawingBuffer: false,
-            precision: 'highp', // High precision float for smoother gradients
-            logarithmicDepthBuffer: false,
+            precision: 'highp',
             stencil: false,
         });
-
-        // Shader error checking forces a synchronous gl.getProgramInfoLog() on every
-        // program link. On Windows/ANGLE that drains the D3D compiler on the main
-        // thread — the procedural element shaders (multi-octave 3D Voronoi) each cost
-        // seconds, and eight of them freeze the tab. Opt in only when debugging GLSL.
         this.renderer.debug.checkShaderErrors = options.debugShaders === true;
-
-        // Force higher color depth if available
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-        // ACES Filmic tone mapping compresses HDR highlights gracefully
-        // Prevents blown-out whites and preserves color saturation in bright areas
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.0; // Neutral exposure, let ACES curve do the work
-
-        // Set clear color with full alpha transparency for CSS backgrounds
+        this.renderer.toneMappingExposure = 1.0;
         this.renderer.setClearColor(0x000000, 0);
-
-        // CRITICAL: Clear the canvas immediately after renderer creation
-        // This ensures no garbage data is visible before the first frame renders
-        // Uninitialized GPU framebuffers can contain random colors (often magenta/red)
         this.renderer.clear();
-
-        // CRITICAL: Disable autoClear for transparency to work in newer Three.js versions
         this.renderer.autoClear = false;
 
-        // Use device pixel ratio capped at 2.0 for balance between quality and performance
-        // DPR 2 devices render at native; DPR 3 devices at 67% native (was 50% at 1.5 cap)
-        // options.maxPixelRatio lets embedders trade sharpness for fill rate (e.g. 1.25 on phones).
         const maxPixelRatio = options.maxPixelRatio > 0 ? options.maxPixelRatio : 2.0;
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio));
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
         this.renderer.setSize(canvas.width, canvas.height, false);
 
-        // Enable shadows if requested
-        if (options.enableShadows) {
-            this.renderer.shadowMap.enabled = true;
-            this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        }
-
-        // WebGL context loss handling (critical for mobile stability)
-        // IMPORTANT: Listen on renderer.domElement, not the original canvas
-        // Three.js may use a different canvas internally
         this._contextLost = false;
         this._boundHandleContextLost = this.handleContextLost.bind(this);
         this._boundHandleContextRestored = this.handleContextRestored.bind(this);
-        this.renderer.domElement.addEventListener(
-            'webglcontextlost',
-            this._boundHandleContextLost,
-            false
-        );
+        this.renderer.domElement.addEventListener('webglcontextlost', this._boundHandleContextLost, false);
         this.renderer.domElement.addEventListener(
             'webglcontextrestored',
             this._boundHandleContextRestored,
             false
         );
 
-        // Page visibility change handling (detect tab switches that may invalidate GPU resources)
-        this._wasHidden = false;
-        // Progressive warmup: skip heavy post-processing for first N frames after tab-back
-        // to spread shader recompilation across frames instead of one massive stall
-        this._warmupFramesRemaining = 0;
-        this._boundHandleVisibilityChange = this._handleVisibilityChange.bind(this);
-        document.addEventListener('visibilitychange', this._boundHandleVisibilityChange);
-
-        // Focus recovery: Windows overlays (Win+Shift+S, Alt+Tab, etc.) may invalidate
-        // GPU render targets without triggering visibilitychange
-        this._boundHandleFocusRecovery = this._handleFocusRecovery.bind(this);
-        window.addEventListener('focus', this._boundHandleFocusRecovery);
-
-        // Create camera
         const fov = options.fov !== undefined ? options.fov : 45;
-        this.camera = new THREE.PerspectiveCamera(
-            fov, // FOV (default 45, lower = more zoomed in appearance)
-            canvas.width / canvas.height, // aspect
-            0.1, // near
-            100 // far
-        );
+        this.camera = new THREE.PerspectiveCamera(fov, canvas.width / canvas.height, 0.1, 100);
         this.cameraDistance = options.cameraDistance !== undefined ? options.cameraDistance : 3;
         this.camera.position.set(0, 0, this.cameraDistance);
         this.camera.lookAt(0, 0, 0);
 
-        // Setup camera controls (OrbitControls)
-        if (options.enableControls !== false) {
-            this.setupCameraControls();
-        }
-
-        // Setup lighting
         this.setupLights();
 
-        // Setup post-processing
-        if (options.enablePostProcessing !== false) {
-            this.setupPostProcessing();
-        }
+        // Soul render target: full drawing buffer so screen-space refraction UVs line up.
+        this._drawingBufferSize = new THREE.Vector2();
+        this.renderer.getDrawingBufferSize(this._drawingBufferSize);
+        this.soulRenderTarget = new THREE.WebGLRenderTarget(
+            Math.max(1, this._drawingBufferSize.x),
+            Math.max(1, this._drawingBufferSize.y),
+            {
+                format: THREE.RGBAFormat,
+                type: THREE.HalfFloatType,
+                minFilter: THREE.LinearFilter,
+                magFilter: THREE.LinearFilter,
+                stencilBuffer: false,
+                depthBuffer: true,
+            }
+        );
 
-        // Core mascot mesh (will be created by Core3DManager)
         this.coreMesh = null;
-
-        // Material mode: 'glow' (default) or 'glass'
         this.materialMode = 'glow';
         this.glowMaterial = null;
-        this.glassMaterial = null;
 
-        // Animation mixer for GLTF models
-        this.mixer = null;
-        this.clock = new THREE.Clock();
-
-        // Reusable objects to avoid per-frame allocations (performance optimization)
         this._tempColor = new THREE.Color();
         this._tempColor2 = new THREE.Color();
         this._white = new THREE.Color(1, 1, 1);
-
-        // Quaternion/Euler temp objects for render() - avoid 10-15 allocations per frame
         this._tempQuat = new THREE.Quaternion();
         this._tempEuler = new THREE.Euler();
         this._quatX = new THREE.Quaternion();
@@ -185,884 +107,106 @@ export class ThreeRenderer {
         this._meshQuat = new THREE.Quaternion();
         this._xAxis = new THREE.Vector3(1, 0, 0);
         this._yAxis = new THREE.Vector3(0, 1, 0);
-        this._zAxis = new THREE.Vector3(0, 0, 1);
         this._cameraToMesh = new THREE.Vector3();
         this._cameraDir = new THREE.Vector3();
-
-        // OPTIMIZATION: Reusable temp vector for soul position projection (avoids allocation per frame)
         this._soulPosTemp = new THREE.Vector3();
-        // OPTIMIZATION: Cached soul mesh reference (avoids scene.traverse every frame)
         this._cachedSoulMesh = null;
-        // OPTIMIZATION: Reusable Vector2 for drawing buffer size queries
-        this._drawingBufferSize = new THREE.Vector2();
     }
 
-    /**
-     * Invalidate the cached soul mesh reference.
-     * Must be called whenever the CrystalSoul is disposed or recreated
-     * so the next render frame re-traverses the scene to find the new mesh.
-     */
+    /** Forget the cached soul mesh (call when the soul is disposed or recreated). */
     invalidateSoulCache() {
         this._cachedSoulMesh = null;
     }
 
-    /**
-     * Setup camera controls (OrbitControls)
-     * Allows mouse/touch interaction to rotate and zoom the camera
-     */
-    setupCameraControls() {
-        // IMPORTANT: OrbitControls needs renderer.domElement, not the canvas directly
-        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-
-        // Enable smooth damping for better feel
-        this.controls.enableDamping = true;
-        this.controls.dampingFactor = 0.1;
-
-        // Set distance limits (min/max zoom for both mouse wheel and pinch)
-        // Use custom min/max if provided, otherwise default to 50%-200% of initial distance
-        const minZoom =
-            this.options.minZoom !== undefined ? this.options.minZoom : this.cameraDistance * 0.5;
-        const maxZoom =
-            this.options.maxZoom !== undefined ? this.options.maxZoom : this.cameraDistance * 2.0;
-        this.controls.minDistance = minZoom;
-        this.controls.maxDistance = maxZoom;
-
-        // Disable panning to keep mascot centered
-        this.controls.enablePan = false;
-
-        // Enable auto-rotate for gentle spinning (can be toggled)
-        this.controls.autoRotate = this.options.autoRotate === true; // default false
-        this.controls.autoRotateSpeed =
-            this.options.autoRotateSpeed !== undefined ? this.options.autoRotateSpeed : 0.5; // slow, subtle rotation
-
-        // Limit vertical rotation to prevent upside-down views
-        this.controls.minPolarAngle = Math.PI * 0.2; // 36 degrees from top
-        this.controls.maxPolarAngle = Math.PI * 0.8; // 36 degrees from bottom
-
-        // Touch-specific optimizations - improved responsiveness
-        this.controls.rotateSpeed = 0.8; // Increased from 0.5 for faster touch rotation
-        this.controls.zoomSpeed = 1.5; // Increased from 1.2 for more responsive pinch zoom
-
-        // Touch gestures configuration
-        // - ONE finger: Rotate (orbit around mascot)
-        // - TWO fingers: Pinch to zoom + pan (but pan is disabled above)
-
-        // Mobile-specific tuning
-        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-            this.controls.rotateSpeed = 1.0;
-            this.controls.zoomSpeed = 1.2;
-        }
-
-        // Prevent browser touch gestures from interfering with canvas interaction
-        this.renderer.domElement.style.touchAction = 'none';
-
-        // ═══════════════════════════════════════════════════════════════════════════
-        // TOUCH LATENCY FIX: Update controls immediately on pointer events
-        // Mobile browsers batch/throttle pointer events to rAF timing. By calling
-        // controls.update() directly in the event handler (before rAF), we ensure
-        // the camera state is current when the next frame renders.
-        // ═══════════════════════════════════════════════════════════════════════════
-        const immediateUpdate = () => {
-            if (this.controls) {
-                this.controls.update();
-            }
-        };
-
-        // Listen for pointer events at capture phase for earliest possible handling
-        this._boundImmediateUpdate = immediateUpdate;
-        this.renderer.domElement.addEventListener('pointermove', immediateUpdate, {
-            passive: true,
-        });
-        this.renderer.domElement.addEventListener('pointerdown', immediateUpdate, {
-            passive: true,
-        });
-
-        // Initialize camera preset manager for smooth view transitions
-        this.cameraPresetManager = new CameraPresetManager(
-            this.camera,
-            this.controls,
-            this.cameraDistance
-        );
-    }
-
-    /**
-     * Setup three-point lighting system
-     * Creates ambient, key, fill, and rim lights for professional look
-     */
+    /** Key/fill/rim + ambient. The crystal and electric shaders are self-lit. */
     setupLights() {
-        // Scene background - keep transparent for CSS background to show through
-        // this.scene.background = new THREE.Color(0x0a0a0f); // Commented out to maintain alpha transparency
-
-        // Ambient light - moderate for balanced visibility
         this.ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
-        this.ambientLight.name = 'ambientLight';
         this.scene.add(this.ambientLight);
-
-        // Key light - main light source (brightest)
         this.keyLight = new THREE.DirectionalLight(0xffffff, 0.8);
         this.keyLight.position.set(2, 2, 2);
-        this.keyLight.name = 'keyLight';
-        if (this.options.enableShadows) {
-            this.keyLight.castShadow = true;
-            this.keyLight.shadow.mapSize.width = 1024;
-            this.keyLight.shadow.mapSize.height = 1024;
-            this.keyLight.shadow.camera.near = 0.5;
-            this.keyLight.shadow.camera.far = 10;
-        }
         this.scene.add(this.keyLight);
-
-        // Fill light - softer light from side to reduce harsh shadows
         this.fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
         this.fillLight.position.set(-2, 1, 1);
-        this.fillLight.name = 'fillLight';
         this.scene.add(this.fillLight);
-
-        // Rim light - backlight for depth and separation from background
         this.rimLight = new THREE.DirectionalLight(0xffffff, 0.7);
         this.rimLight.position.set(0, 1, -2);
-        this.rimLight.name = 'rimLight';
         this.scene.add(this.rimLight);
-
-        // Accent lights for glass material (colored rim lights) - subtle for glass effects only
-        // Blue accent from left
-        this.accentLight1 = new THREE.PointLight(0x00d4ff, 0.3, 10);
-        this.accentLight1.position.set(-3, 0, 1);
-        this.accentLight1.name = 'accentLight1';
-        this.scene.add(this.accentLight1);
-
-        // Pink accent from right
-        this.accentLight2 = new THREE.PointLight(0xff1493, 0.2, 10);
-        this.accentLight2.position.set(3, 0, 1);
-        this.accentLight2.name = 'accentLight2';
-        this.scene.add(this.accentLight2);
-
-        // Orange accent from top
-        this.accentLight3 = new THREE.PointLight(0xff6b35, 0.2, 10);
-        this.accentLight3.position.set(0, 3, -1);
-        this.accentLight3.name = 'accentLight3';
-        this.scene.add(this.accentLight3);
-
-        // Create environment map for glass reflections
-        this.createEnvironmentMap();
     }
 
-    /**
-     * Create environment map for glass material reflections
-     * Loads HDRI studio lighting or falls back to procedural generation
-     */
-    async createEnvironmentMap() {
-        // Guard against calls after destroy (React Strict Mode can unmount during async load)
-        if (this._destroyed) return;
-
-        // Mark environment loading as in-progress to prevent rendering magenta flash
-        this._envMapLoading = true;
-
-        // Try to load optional HDRI (.hdr format) for enhanced reflections
-        // HDRI is optional - apps can place studio_1k.hdr in /hdri/ for better crystal reflections
-        try {
-            if (!this.hdriEnabled) throw new Error('HDRI disabled by option');
-            // HDRLoader replaces deprecated RGBELoader in Three.js r169+
-            const { HDRLoader } = await import('three/examples/jsm/loaders/HDRLoader.js');
-
-            // Check if destroyed during import (React Strict Mode)
-            if (this._destroyed) return;
-
-            const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
-            pmremGenerator.compileEquirectangularShader();
-
-            try {
-                const hdrLoader = new HDRLoader();
-
-                // Build HDRI path dynamically based on assetBasePath
-                // HDRI files are at /hdri/ (sibling to /assets/), not inside /assets/
-                // assetBasePath typically points to /assets or /emotive-engine/assets
-                const hdrFileName = 'studio_1k.hdr';
-                let hdrPath;
-
-                if (this.assetBasePath) {
-                    // Remove trailing slash and /assets suffix to get base path
-                    // e.g., '/emotive-engine/assets' -> '/emotive-engine'
-                    // e.g., '/assets' -> ''
-                    let base = this.assetBasePath.replace(/\/$/, '');
-                    if (base.endsWith('/assets')) {
-                        base = base.slice(0, -7); // Remove '/assets'
-                    }
-                    hdrPath = base ? `${base}/hdri/${hdrFileName}` : `/hdri/${hdrFileName}`;
-                } else {
-                    // Auto-detect base path from current page URL
-                    // This handles GitHub Pages and other subdirectory deployments
-                    const pathParts = window.location.pathname.split('/');
-                    let detectedBase = '';
-
-                    // Check for repo name in path (e.g., /emotive-engine/examples/...)
-                    if (pathParts.length > 2 && pathParts[1]) {
-                        detectedBase = `/${pathParts[1]}`;
-                    }
-
-                    hdrPath = detectedBase
-                        ? `${detectedBase}/hdri/${hdrFileName}`
-                        : `/hdri/${hdrFileName}`;
-                }
-
-                let texture = null;
-                try {
-                    texture = await hdrLoader.loadAsync(hdrPath);
-                } catch (_e) {
-                    // HDRI loading failed — will fall back to procedural
-                }
-
-                // Validate texture was loaded correctly
-                if (!texture || !texture.image) {
-                    throw new Error(`HDR texture not found at ${hdrPath}`);
-                }
-
-                // Check if destroyed during load (React Strict Mode)
-                if (this._destroyed) {
-                    texture.dispose();
-                    pmremGenerator.dispose();
-                    return;
-                }
-
-                texture.mapping = THREE.EquirectangularReflectionMapping;
-                this.envMap = pmremGenerator.fromEquirectangular(texture).texture;
-                texture.dispose(); // CRITICAL: Dispose source texture after PMREM conversion (GPU memory leak fix)
-                pmremGenerator.dispose();
-                this._envMapLoading = false; // HDRI loaded successfully
-                return;
-            } catch (_e) {
-                // HDRI is optional — fall back to procedural envmap
-                console.warn('[ThreeRenderer] HDRI loading failed, using procedural environment:', _e.message || _e);
-                pmremGenerator.dispose();
-            }
-        } catch (_e) {
-            // HDRLoader not available — use procedural envmap
-        }
-
-        // Check if destroyed before fallback (React Strict Mode)
-        if (this._destroyed) return;
-
-        // Fallback: Procedural environment map
-        try {
-            const size = 512;
-            const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(size);
-            const envScene = new THREE.Scene();
-
-            const skyColor = new THREE.Color(0x5599ff);
-            const horizonColor = new THREE.Color(0xff6b9d);
-            const groundColor = new THREE.Color(0x1a1a2e);
-
-            const hemiLight = new THREE.HemisphereLight(skyColor, groundColor, 1.5);
-            envScene.add(hemiLight);
-
-            const light1 = new THREE.PointLight(0x00d4ff, 2, 20);
-            light1.position.set(-5, 2, -5);
-            envScene.add(light1);
-
-            const light2 = new THREE.PointLight(0xff1493, 2, 20);
-            light2.position.set(5, 2, -5);
-            envScene.add(light2);
-
-            const light3 = new THREE.PointLight(0xffaa00, 1.5, 20);
-            light3.position.set(0, 5, 0);
-            envScene.add(light3);
-
-            envScene.background = horizonColor;
-
-            const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRenderTarget);
-            cubeCamera.update(this.renderer, envScene);
-
-            this.envMap = cubeRenderTarget.texture;
-
-            // CRITICAL: Store procedural environment resources for proper disposal (GPU memory leak fix)
-            this._envCubeRenderTarget = cubeRenderTarget;
-            this._envScene = envScene;
-            this._envCubeCamera = cubeCamera;
-        } finally {
-            // Mark environment loading as complete even if fallback fails
-            this._envMapLoading = false;
-        }
-    }
-
-    /**
-     * Setup post-processing pipeline
-     * Adds bloom/glow effects for emotion-based glow intensity
-     */
-    setupPostProcessing() {
-        // Effect composer for post-processing chain
-        // Get actual drawing buffer size (includes pixel ratio)
-        const drawingBufferSize = new THREE.Vector2();
-        this.renderer.getDrawingBufferSize(drawingBufferSize);
-
-        // Create with alpha-enabled render target at full drawing buffer resolution
-        // DepthTexture: RenderPass writes depth here for free — reused by AO pass
-        // DepthStencilFormat + UnsignedInt248Type matches Three.js SSAOPass (broadest GPU support)
-        const depthTexture = new THREE.DepthTexture(drawingBufferSize.x, drawingBufferSize.y);
-        depthTexture.format = THREE.DepthStencilFormat;
-        depthTexture.type = THREE.UnsignedInt248Type;
-
-        const renderTarget = new THREE.WebGLRenderTarget(drawingBufferSize.x, drawingBufferSize.y, {
-            format: THREE.RGBAFormat,
-            type: THREE.HalfFloatType, // HDR: Allow values > 1.0 for proper bloom
-            minFilter: THREE.NearestFilter, // DIAGNOSTIC: Prevent bilinear blending with transparent black at edges
-            magFilter: THREE.NearestFilter,
-            stencilBuffer: false,
-            depthBuffer: true,
-            depthTexture,
-        });
-        this.composer = new EffectComposer(this.renderer, renderTarget);
-
-        // CRITICAL: Clear ALL composer render targets to prevent garbage data flash
-        // The composer creates internal read/write buffers that contain uninitialized GPU memory
-        // This can show as random colors (often magenta/red) on first frame before RenderPass clears
-        this.renderer.setRenderTarget(renderTarget);
-        this.renderer.clear();
-        this.renderer.setRenderTarget(this.composer.readBuffer);
-        this.renderer.clear();
-        this.renderer.setRenderTarget(this.composer.writeBuffer);
-        this.renderer.clear();
-        this.renderer.setRenderTarget(null);
-
-        // Render pass - base scene render
-        const renderPass = new RenderPass(this.scene, this.camera);
-        // Clear to transparent black - the standard for compositing
-        // Dark halo fix is in UnrealBloomPassAlpha: bloom adds RGB only, preserves alpha
-        renderPass.clearColor = new THREE.Color(0, 0, 0);
-        renderPass.clearAlpha = 0; // Transparent background
-        this.composer.addPass(renderPass);
-
-        // Ambient Occlusion pass — reads depth from RenderPass, composites AO onto scene
-        // Placed after RenderPass so it has scene depth, before distortion/bloom
-        this.aoPass = new AmbientOcclusionPass(
-            this.camera,
-            drawingBufferSize.x,
-            drawingBufferSize.y
-        );
-        this.aoPass.enabled = false; // Off by default — enabled per-element by Core3DManager
-        this.composer.addPass(this.aoPass);
-
-        // Motion blur pass — velocity-based per-object blur for instanced elements
-        // Placed after AO, before distortion/bloom. Off by default — auto-enabled by spawner.
-        this.motionBlurPass = new VelocityMotionBlurPass(this.camera);
-        this.motionBlurPass.enabled = false;
-        this.composer.addPass(this.motionBlurPass);
-
-        // Distortion pass slot — added here (before bloom) so bloom stays last.
-        // The actual ShaderPass is created later in the distortion section and inserted here.
-        this._distortionPassIndex = this.composer.passes.length;
-
-        // Bloom pass - glow/bloom effect (Unreal Engine style)
-        // PERFORMANCE: Always use half resolution for bloom - barely visible difference
-        // since bloom is inherently blurry, but saves ~4x fill rate
-        const bloomScale = 0.5; // Half resolution on all platforms
-        const bloomResolution = new THREE.Vector2(
-            Math.floor(drawingBufferSize.x * bloomScale),
-            Math.floor(drawingBufferSize.y * bloomScale)
-        );
-        this.bloomPass = new UnrealBloomPassAlpha(
-            bloomResolution,
-            1.5, // strength - strong glow for HDR elements (threshold filters what glows)
-            0.4, // radius - moderate spread for soft halo
-            0.9 // threshold - very high so only HDR peaks (>0.9) trigger bloom
-        );
-        this.bloomPass.name = 'bloomPass';
-        this.bloomPass.enabled = true;
-        // renderToScreen is auto-managed by EffectComposer.isLastEnabledPass()
-        // Bloom must ALWAYS be the last enabled pass (renderToScreen=true) because its
-        // render() has two-phase compositing: copy scene to screen, then add bloom on top.
-        // Distortion pass goes BEFORE bloom so bloom's renderToScreen is never affected.
-        this.composer.addPass(this.bloomPass);
-
-        // CRITICAL: Clear bloom buffers immediately after creation to prevent garbage data flash
-        // Uninitialized GPU memory can contain random colors (often red/magenta on some drivers)
-        this.bloomPass.clearBloomBuffers(this.renderer);
-
-        // === SEPARATE PARTICLE BLOOM PIPELINE ===
-        // Particles get their own render target with NON-BLACK clear color
-        // This prevents dark halos from blur sampling black transparent pixels
-        this.particleRenderTarget = new THREE.WebGLRenderTarget(
-            drawingBufferSize.x,
-            drawingBufferSize.y,
-            {
-                format: THREE.RGBAFormat,
-                type: THREE.HalfFloatType,
-                minFilter: THREE.LinearFilter,
-                magFilter: THREE.LinearFilter,
-                stencilBuffer: false,
-                depthBuffer: true,
-            }
-        );
-
-        // Clear particle render target
-        this.renderer.setRenderTarget(this.particleRenderTarget);
-        this.renderer.clear();
-        this.renderer.setRenderTarget(null);
-
-        // Particle bloom pass (same settings but separate pipeline)
-        this.particleBloomPass = new UnrealBloomPassAlpha(
-            bloomResolution,
-            0.5, // reduced strength for subtler particle glow
-            0.4, // tighter radius
-            0.3 // higher threshold for less glow
-        );
-        this.particleBloomPass.name = 'particleBloomPass';
-        this.particleBloomPass.enabled = true;
-        // IMPORTANT: Use a non-black clear color for particle bloom
-        // This is the key fix - blur will sample white instead of black from transparent areas
-        this.particleBloomPass.clearColor = new THREE.Color(1, 1, 1); // White clear for particle blur
-        // Skip the base copy step - we only want to add bloom on top of existing scene
-        this.particleBloomPass.skipBaseCopy = true;
-
-        // Clear particle bloom buffers too
-        this.particleBloomPass.clearBloomBuffers(this.renderer);
-
-        // === SOUL REFRACTION RENDER TARGET ===
-        // Soul mesh is rendered to this texture first, then sampled by crystal shader
-        // with refraction distortion to create proper lensing effect
-        this.soulRenderTarget = new THREE.WebGLRenderTarget(
-            drawingBufferSize.x,
-            drawingBufferSize.y,
-            {
-                format: THREE.RGBAFormat,
-                type: THREE.HalfFloatType,
-                minFilter: THREE.LinearFilter,
-                magFilter: THREE.LinearFilter,
-                stencilBuffer: false,
-                depthBuffer: true,
-            }
-        );
-
-        // Clear soul render target
-        this.renderer.setRenderTarget(this.soulRenderTarget);
-        this.renderer.clear();
-        this.renderer.setRenderTarget(null);
-
-        // === ICE REFRACTION RENDER TARGET ===
-        // Scene is rendered WITHOUT ice meshes to this texture, then ice shader
-        // samples it with normal-distorted UVs for screen-space refraction
-        this.iceRefractionTarget = new THREE.WebGLRenderTarget(
-            drawingBufferSize.x,
-            drawingBufferSize.y,
-            {
-                format: THREE.RGBAFormat,
-                type: THREE.HalfFloatType,
-                minFilter: THREE.LinearFilter,
-                magFilter: THREE.LinearFilter,
-                stencilBuffer: false,
-                depthBuffer: true,
-            }
-        );
-
-        this.renderer.setRenderTarget(this.iceRefractionTarget);
-        this.renderer.clear();
-        this.renderer.setRenderTarget(null);
-
-        // Meshes that need screen-space refraction (ice instanced meshes)
-        this._refractionMeshes = new Set();
-
-        // Auto-detect CSS background for refraction (colors and images)
-        this._bgAutoCache = {
-            colorStr: null,
-            imageStr: null,
-            color: null,       // THREE.Color instance (reused)
-            texture: null,     // THREE.Texture for loaded image
-            imageUrl: null,    // Last loaded URL (for dedup)
-        };
-        this._autoRefractionBackground = null;
-
-        // === DISTORTION RENDER TARGET ===
-        // Half-res — distortion offsets are low frequency (smooth/blurry by nature)
-        const halfWidth = Math.floor(drawingBufferSize.x * 0.5);
-        const halfHeight = Math.floor(drawingBufferSize.y * 0.5);
-        this.distortionTarget = new THREE.WebGLRenderTarget(halfWidth, halfHeight, {
-            format: THREE.RGBAFormat,
-            type: THREE.HalfFloatType, // Signed offsets need float
-            minFilter: THREE.LinearFilter,
-            magFilter: THREE.LinearFilter,
-            depthBuffer: false, // No depth needed for 2D offset map
-        });
-
-        this.renderer.setRenderTarget(this.distortionTarget);
-        this.renderer.clear();
-        this.renderer.setRenderTarget(null);
-
-        // Distortion post-processing pass (BEFORE bloom, not after)
-        // Bloom must always be the last enabled pass because its render() relies on
-        // renderToScreen=true for correct two-phase compositing (scene copy + bloom add).
-        // Distortion warps the raw scene, then bloom processes the warped result.
-        this.distortionPass = new ShaderPass(DistortionShader);
-        this.distortionPass.enabled = false; // Off by default — enabled when sources active
-        // Insert before bloom (at saved index) so bloom remains the last enabled pass
-        this.composer.passes.splice(this._distortionPassIndex, 0, this.distortionPass);
-
-        // DistortionManager: creates/syncs parallel InstancedMeshes, renders distortion map
-        this.distortionManager = new DistortionManager(this.renderer, this.camera);
-
-        // Particle atmospherics: smoke/mist particles render directly in the main scene
-        // (no separate RT or composite pass — particles are real 3D objects with depth)
-        this.particleAtmospherics = new ParticleAtmosphericsManager(this.scene, this.camera);
-
-        // Composite shader to blend particle bloom onto main scene
-        this.particleCompositeShader = {
-            uniforms: {
-                tDiffuse: { value: null },
-                tParticles: { value: null },
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                void main() {
-                    vUv = uv;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform sampler2D tDiffuse;
-                uniform sampler2D tParticles;
-                varying vec2 vUv;
-
-                void main() {
-                    vec4 base = texture2D(tDiffuse, vUv);
-                    vec4 particles = texture2D(tParticles, vUv);
-
-                    // Alpha-preserving composite: particles over base
-                    // Use particle alpha to blend
-                    vec3 blended = mix(base.rgb, particles.rgb, particles.a);
-                    float alpha = base.a + particles.a * (1.0 - base.a);
-
-                    gl_FragColor = vec4(blended, alpha);
-                }
-            `,
-        };
-
-        // === GLOW LAYER ===
-        // Isolated screen-space glow effect that activates during glow/flash gestures
-        // Completely separate from main bloom pipeline to avoid affecting baseline appearance
-        this.glowLayer = new GlowLayer(this.renderer);
-
-        // === CRACK LAYER ===
-        // Post-processing crack overlay that works on any geometry
-        // Uses depth buffer to mask cracks to mesh surface only
-        this.crackLayer = new CrackLayer(this.renderer);
-    }
-
-    /**
-     * Handle WebGL context loss
-     * Prevents default behavior and sets flag to stop rendering
-     * @param {Event} event - Context lost event
-     */
+    /** @param {Event} event */
     handleContextLost(event) {
         event.preventDefault();
         this._contextLost = true;
-        console.warn('⚠️ WebGL context lost - rendering paused');
-
-        // Cancel any ongoing animation frames
-        if (this.cameraAnimationId) {
-            cancelAnimationFrame(this.cameraAnimationId);
-            this.cameraAnimationId = null;
-        }
+        console.warn('[ThreeRenderer] WebGL context lost - rendering paused');
     }
 
-    /**
-     * Handle WebGL context restoration
-     * Recreates resources and resumes rendering
-     */
     handleContextRestored() {
         this._contextLost = false;
-
-        // Recreate all GPU resources
-        this.recreateResources();
-
-        // Notify external listeners (e.g., Core3DManager) to recreate custom materials
-        if (this.onContextRestored) {
-            this.onContextRestored();
-        }
-    }
-
-    /**
-     * Recreate all GPU resources after context loss
-     * Rebuilds geometries, materials, textures, and post-processing
-     */
-    recreateResources() {
-        // Recreate environment map
-        this.createEnvironmentMap();
-
-        // Recreate materials
-        if (this.materialMode === 'glow') {
+        if (this.materialMode === 'glow' && this.coreMesh && this.coreMesh.material === this.glowMaterial) {
             this.glowMaterial = this.createGlowMaterial();
-            if (this.coreMesh) {
-                this.coreMesh.material = this.glowMaterial;
-            }
-        } else if (this.materialMode === 'glass') {
-            this.glassMaterial = this.createGlassMaterial();
-            if (this.coreMesh) {
-                this.coreMesh.material = this.glassMaterial;
-            }
-            // Recreate inner core
-            if (this.coreMesh) {
-                this.createInnerCore();
-            }
+            this.coreMesh.material = this.glowMaterial;
         }
-
-        // Note: For custom materials (crystal, moon, sun), the Core3DManager
-        // handles recreation via the onContextRestored callback
+        if (this.onContextRestored) this.onContextRestored();
     }
 
     /**
-     * Recreate the distortion render target.
-     * Called when GPU resources may have been invalidated by OS-level events.
-     * @private
-     */
-    _recreateDistortionTarget() {
-        if (!this.distortionTarget) return;
-        this.distortionTarget.dispose();
-        const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-        this.distortionTarget = new THREE.WebGLRenderTarget(
-            Math.floor(size.x * 0.5),
-            Math.floor(size.y * 0.5),
-            {
-                format: THREE.RGBAFormat,
-                type: THREE.HalfFloatType,
-                minFilter: THREE.LinearFilter,
-                magFilter: THREE.LinearFilter,
-                depthBuffer: false,
-            }
-        );
-        this.renderer.setRenderTarget(this.distortionTarget);
-        this.renderer.clear();
-        this.renderer.setRenderTarget(null);
-    }
-
-    /**
-     * Handle window focus recovery.
-     * Windows overlays (snipping tool, Alt+Tab) can invalidate GPU render targets
-     * without firing visibilitychange. Only recreate if the page was actually hidden
-     * to avoid churning GPU resources on routine focus events (clicking the window).
-     * @private
-     */
-    _handleFocusRecovery() {
-        if (this._destroyed) return;
-        if (this._wasHidden) {
-            this._wasHidden = false;
-            this._recreateDistortionTarget();
-        }
-    }
-
-    /**
-     * Handle page visibility changes
-     * When tab becomes visible again, check if GPU resources need reloading
-     * @private
-     */
-    _handleVisibilityChange() {
-        if (this._destroyed) return;
-
-        if (document.hidden) {
-            this._wasHidden = true;
-            return;
-        }
-
-        // Becoming visible — clear flag so _handleFocusRecovery doesn't double up
-        this._wasHidden = false;
-
-        if (!document.hidden) {
-            // Reset Three.js state cache — may be stale after GPU hibernation
-            this.renderer?.state?.reset();
-
-            // Tab became visible - check if textures are still valid
-            // Some browsers silently invalidate GPU resources without triggering webglcontextlost
-            const gl = this.renderer?.getContext();
-            if (gl && gl.isContextLost()) {
-                // Context was lost silently - manually trigger restoration flow
-                console.warn('⚠️ WebGL context lost detected on visibility change');
-                this._contextLost = true;
-                // The context restoration will be handled by the browser's webglcontextrestored event
-            } else {
-                // Context is valid but GPU resources might be invalidated
-
-                // Recreate render targets — browsers may reclaim RT memory for background tabs
-                this._recreateDistortionTarget();
-
-                if (this.coreMesh?.material) {
-                    // Check if the material has textures that need revalidation
-                    const { material } = this.coreMesh;
-                    if (material.map && !material.map.image) {
-                        // Texture image was garbage collected - trigger reload
-                        console.warn(
-                            '⚠️ Texture invalidated on visibility change - triggering reload'
-                        );
-                        if (this.onContextRestored) {
-                            this.onContextRestored();
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Create core mascot mesh with custom glow material
-     * @param {THREE.BufferGeometry|THREE.Group} geometry - Three.js geometry or Group (e.g., black hole)
-     * @param {THREE.Material} customMaterial - Optional custom material (e.g., moon textures)
-     * @returns {THREE.Mesh|THREE.Group}
+     * Create the core mesh.
+     * @param {THREE.BufferGeometry} geometry
+     * @param {THREE.Material} [customMaterial] - the crystal material; glow material if absent
+     * @returns {THREE.Mesh}
      */
     createCoreMesh(geometry, customMaterial = null) {
-        // Remove existing mesh if present
         if (this.coreMesh) {
             this.scene.remove(this.coreMesh);
-            // Handle Group disposal differently
-            if (this.coreMesh.isGroup) {
-                this.coreMesh.traverse(child => {
-                    if (child.geometry) child.geometry.dispose();
-                    if (child.material) this.disposeMaterial(child.material);
-                });
-            } else {
-                if (this.coreMesh.geometry) this.coreMesh.geometry.dispose();
-                if (this.coreMesh.material) this.disposeMaterial(this.coreMesh.material);
-            }
-
+            if (this.coreMesh.geometry) this.coreMesh.geometry.dispose();
+            if (this.coreMesh.material) this.disposeMaterial(this.coreMesh.material);
             this.coreMesh = null;
         }
-
-        // Check if geometry is a THREE.Group (e.g., black hole with multiple meshes)
-        if (geometry.isGroup) {
-            // For Groups, materials are already applied to child meshes
-            this.coreMesh = geometry;
-            this.coreMesh.name = 'coreMascot';
-
-            // Apply shadows to all meshes in group
-            if (this.options.enableShadows) {
-                this.coreMesh.traverse(child => {
-                    if (child.isMesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                    }
-                });
-            }
-
-            this.scene.add(this.coreMesh);
-            return this.coreMesh;
+        let material = customMaterial;
+        if (!material) {
+            if (!this.glowMaterial) this.glowMaterial = this.createGlowMaterial();
+            material = this.glowMaterial;
         }
-
-        // Standard BufferGeometry path (sphere, moon, sun, etc.)
-        // Determine which material to use
-        let material;
-
-        if (customMaterial) {
-            // Use provided custom material (e.g., moon with NASA textures)
-            material = customMaterial;
-        } else {
-            // Create glow material and store it
-            if (!this.glowMaterial) {
-                this.glowMaterial = this.createGlowMaterial();
-            }
-
-            // Use current material mode
-            material =
-                this.materialMode === 'glass'
-                    ? this.glassMaterial || this.createGlassMaterial()
-                    : this.glowMaterial;
-        }
-
-        // Create mesh
         this.coreMesh = new THREE.Mesh(geometry, material);
         this.coreMesh.name = 'coreMascot';
-
-        // Render crystal before other transparent objects (instanced elements) so its
-        // depth is in the buffer when crowns/rings depth-test against it.
-        // Overlay meshes use coreMesh.renderOrder + N, so they still render after.
-        if (material.transparent) {
-            this.coreMesh.renderOrder = -1;
-        }
-
-        if (this.options.enableShadows) {
-            this.coreMesh.castShadow = true;
-            this.coreMesh.receiveShadow = true;
-        }
-
+        // Crystal first among transparent objects so arcs depth-test against it.
+        if (material.transparent) this.coreMesh.renderOrder = -1;
         this.scene.add(this.coreMesh);
-
-        // Create white inner core for glass mode (lightsaber effect)
-        if (this.materialMode === 'glass') {
-            this.createInnerCore();
-        }
-
         return this.coreMesh;
     }
 
     /**
-     * Swap geometry without recreating mesh (performance optimization)
-     * @param {THREE.BufferGeometry} newGeometry - New geometry to swap to
-     * @param {THREE.Material} customMaterial - Optional custom material to swap to
+     * Swap geometry (and optionally material) on the existing core mesh.
+     * @param {THREE.BufferGeometry} newGeometry
+     * @param {THREE.Material} [customMaterial]
      */
     swapGeometry(newGeometry, customMaterial = null) {
         if (!this.coreMesh) return;
-
-        // ═══════════════════════════════════════════════════════════════════
-        // CLEAR BLOOM BUFFERS
-        // Prevents residual glow from old geometry bleeding into new one
-        // ═══════════════════════════════════════════════════════════════════
-        if (this.bloomPass) {
-            this.bloomPass.clearBloomBuffers(this.renderer);
-        }
-        if (this.particleBloomPass) {
-            this.particleBloomPass.clearBloomBuffers(this.renderer);
-        }
-
-        // Dispose old geometry
-        const oldGeometry = this.coreMesh.geometry;
-        if (oldGeometry) {
-            oldGeometry.dispose();
-        }
-
-        // Swap to new geometry
+        if (this.coreMesh.geometry) this.coreMesh.geometry.dispose();
         this.coreMesh.geometry = newGeometry;
 
-        // If custom material provided, swap material too
         if (customMaterial) {
-            // Dispose old material (but NOT if it's glow/glass material - we reuse those)
-            if (
-                this.coreMesh.material &&
-                this.coreMesh.material !== this.glowMaterial &&
-                this.coreMesh.material !== this.glassMaterial
-            ) {
+            if (this.coreMesh.material && this.coreMesh.material !== this.glowMaterial) {
                 this.disposeMaterial(this.coreMesh.material);
             }
-            // Assign new custom material
             this.coreMesh.material = customMaterial;
-
-            // Set resolution uniform for refraction if present
             if (customMaterial.uniforms?.resolution) {
-                const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-                customMaterial.uniforms.resolution.value.set(size.x, size.y);
+                this.renderer.getDrawingBufferSize(this._drawingBufferSize);
+                customMaterial.uniforms.resolution.value.set(
+                    this._drawingBufferSize.x,
+                    this._drawingBufferSize.y
+                );
             }
         } else {
-            // Swapping back to standard material - restore glow or glass
-            const standardMaterial =
-                this.materialMode === 'glass'
-                    ? this.glassMaterial || this.createGlassMaterial()
-                    : this.glowMaterial;
-
-            if (this.coreMesh.material !== standardMaterial) {
-                // Dispose custom material
-                if (
-                    this.coreMesh.material &&
-                    this.coreMesh.material !== this.glowMaterial &&
-                    this.coreMesh.material !== this.glassMaterial
-                ) {
-                    this.disposeMaterial(this.coreMesh.material);
-                }
-                this.coreMesh.material = standardMaterial;
+            if (!this.glowMaterial) this.glowMaterial = this.createGlowMaterial();
+            if (this.coreMesh.material !== this.glowMaterial) {
+                if (this.coreMesh.material) this.disposeMaterial(this.coreMesh.material);
+                this.coreMesh.material = this.glowMaterial;
             }
-        }
-
-        // Recreate inner core to match new geometry (if in glass mode and NOT custom material)
-        if (this.materialMode === 'glass' && !customMaterial) {
-            this.createInnerCore();
         }
     }
 
-    /**
-     * Create custom glow material with Fresnel shader
-     * Matches the look of the custom WebGL renderer's core.vert/core.frag
-     */
+    /** Fresnel glow material for non-crystal geometry (sphere fallback). */
     createGlowMaterial() {
         return new THREE.ShaderMaterial({
             uniforms: {
@@ -1070,47 +214,34 @@ export class ThreeRenderer {
                 glowIntensity: { value: 1.0 },
                 coreColor: { value: new THREE.Color(1, 1, 1) },
                 fresnelPower: { value: 3.0 },
-                uOpacity: { value: 1.0 }, // Mesh opacity for fade effects (smokebomb/vanish)
+                uOpacity: { value: 1.0 },
             },
-            vertexShader: `
+            vertexShader: /* glsl */ `
                 varying vec3 vNormal;
                 varying vec3 vViewPosition;
-
                 void main() {
-                    // Transform normal to view space
                     vNormal = normalize(normalMatrix * normal);
-
-                    // Calculate view space position
                     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                     vViewPosition = -mvPosition.xyz;
-
-                    // Output clip space position
                     gl_Position = projectionMatrix * mvPosition;
                 }
             `,
-            fragmentShader: `
+            fragmentShader: /* glsl */ `
                 uniform vec3 glowColor;
                 uniform vec3 coreColor;
                 uniform float glowIntensity;
                 uniform float fresnelPower;
                 uniform float uOpacity;
-
                 varying vec3 vNormal;
                 varying vec3 vViewPosition;
-
                 void main() {
-                    // Discard fully transparent pixels
                     if (uOpacity < 0.01) discard;
-
-                    // Fresnel effect: edges glow more than center
                     vec3 viewDir = normalize(vViewPosition);
                     float fresnel = pow(1.0 - abs(dot(vNormal, viewDir)), fresnelPower);
-
-                    // Combine white core with colored glow
-                    // Both core and glow respect glowIntensity for proper on/off toggle
                     vec3 finalColor = (coreColor * glowIntensity) + (glowColor * glowIntensity * fresnel);
-
                     gl_FragColor = vec4(finalColor, uOpacity);
+                    #include <tonemapping_fragment>
+                    #include <colorspace_fragment>
                 }
             `,
             transparent: true,
@@ -1118,473 +249,77 @@ export class ThreeRenderer {
         });
     }
 
-    /**
-     * Create glass material with realistic refraction
-     * Uses MeshPhysicalMaterial with transmission for refraction through particles
-     */
-    createGlassMaterial() {
-        // Store default emissive multiplier (can be adjusted via UI)
-        // Using white emissive for uniform bloom, so this needs to be low
-        this.glassEmissiveMultiplier = 0.6;
-
-        const material = new THREE.MeshPhysicalMaterial({
-            transmission: 1.0, // Full interior transparency (refraction)
-            thickness: 2.7, // Strong refraction intensity (user-tuned)
-            roughness: 0.37, // Slightly frosted surface (user-tuned)
-            metalness: 0.0, // Non-metallic
-            ior: 1.5, // Index of refraction (glass)
-            reflectivity: 0.5, // Subtle surface reflections
-            envMapIntensity: 1.2, // Environment reflection strength (boosted)
-            side: THREE.DoubleSide, // Render both faces for proper refraction
-            transparent: true,
-            opacity: 1.0,
-            color: 0xffffff, // Base color (can be tinted)
-            emissive: 0xffffff, // Internal glow color (white, will be tinted by emotion)
-            emissiveIntensity: 0.6, // Internal glow brightness (raised for visibility)
-            clearcoat: 0.8, // Strong glossy coating for sparkle
-            clearcoatRoughness: 0.05, // Very smooth for sharp highlights
-            iridescence: 0.4, // Color shifting based on viewing angle
-            iridescenceIOR: 1.3, // IOR for iridescence effect
-            iridescenceThicknessRange: [100, 400], // Thickness range for color variation
-        });
-
-        // Apply environment map if available
-        if (this.envMap) {
-            material.envMap = this.envMap;
-        }
-
-        return material;
-    }
-
-    /**
-     * Create white inner core for lightsaber effect in glass mode
-     * Creates a smaller mesh inside the glass crystal with bright white emissive
-     */
-    createInnerCore() {
-        // Remove existing inner core if present
-        if (this.innerCore) {
-            // Inner core is a child of coreMesh, not scene
-            if (this.coreMesh) {
-                this.coreMesh.remove(this.innerCore);
-            }
-            this.innerCore.geometry.dispose();
-            this.disposeMaterial(this.innerCore.material);
-            this.innerCore = null;
-            this.innerCoreMaterial = null;
-        }
-
-        if (!this.coreMesh || !this.coreMesh.geometry) return;
-
-        // Detect geometry type and create matching inner core
-        const outerGeometry = this.coreMesh.geometry;
-        let coreGeometry;
-
-        // Check geometry type by constructor or parameters
-        if (
-            outerGeometry.type === 'TorusGeometry' ||
-            outerGeometry.parameters?.tube !== undefined
-        ) {
-            // TORUS: Create thinner torus that follows the donut hole
-            const params = outerGeometry.parameters;
-            const radius = params.radius || 1.0;
-            const tubeRadius = (params.tube || 0.4) * 0.25; // Much thinner tube for lightsaber effect
-            const radialSegments = params.radialSegments || 16;
-            const tubularSegments = params.tubularSegments || 100;
-            coreGeometry = new THREE.TorusGeometry(
-                radius,
-                tubeRadius,
-                radialSegments,
-                tubularSegments
-            );
-        } else if (outerGeometry.type === 'SphereGeometry') {
-            // SPHERE: Smaller sphere
-            const params = outerGeometry.parameters;
-            const radius = (params.radius || 1.0) * 0.2;
-            coreGeometry = new THREE.SphereGeometry(radius, 32, 32);
-        } else if (outerGeometry.type === 'BoxGeometry') {
-            // BOX/CUBE: Smaller box
-            const params = outerGeometry.parameters;
-            const width = (params.width || 1.0) * 0.2;
-            const height = (params.height || 1.0) * 0.2;
-            const depth = (params.depth || 1.0) * 0.2;
-            coreGeometry = new THREE.BoxGeometry(width, height, depth);
-        } else if (
-            outerGeometry.type === 'IcosahedronGeometry' ||
-            outerGeometry.type === 'OctahedronGeometry'
-        ) {
-            // CRYSTAL SHAPES: Smaller version (20% scale works perfectly)
-            const params = outerGeometry.parameters;
-            const radius = (params.radius || 1.0) * 0.2;
-            const detail = params.detail || 2;
-            if (outerGeometry.type === 'IcosahedronGeometry') {
-                coreGeometry = new THREE.IcosahedronGeometry(radius, detail);
-            } else {
-                coreGeometry = new THREE.OctahedronGeometry(radius, detail);
-            }
-        } else {
-            // DEFAULT: Use small icosahedron for unknown geometries
-            coreGeometry = new THREE.IcosahedronGeometry(0.2, 2);
-        }
-
-        // Bright white emissive material for lightsaber effect
-        // Crystal shapes (crystal, diamond, icosahedron, octahedron) get stronger bloom
-        const geometryTypeName = outerGeometry.userData?.geometryType;
-        const isCrystalShape =
-            outerGeometry.type === 'IcosahedronGeometry' ||
-            outerGeometry.type === 'OctahedronGeometry' ||
-            geometryTypeName === 'crystal' ||
-            geometryTypeName === 'diamond';
-
-        const coreMaterial = new THREE.MeshStandardMaterial({
-            emissive: 0xffffff,
-            emissiveIntensity: isCrystalShape ? 3.5 : 2.0, // Higher bloom for crystals
-            color: 0xffffff,
-            transparent: false,
-            opacity: 1.0,
-        });
-
-        // Store reference for color updates in render()
-        this.innerCoreMaterial = coreMaterial;
-
-        this.innerCore = new THREE.Mesh(coreGeometry, coreMaterial);
-        this.innerCore.name = 'innerCore';
-
-        // Add inner core as child of main core mesh so it transforms with it
-        this.coreMesh.add(this.innerCore);
-    }
-
-    /**
-     * Set material mode and swap materials
-     * @param {string} mode - 'glow' or 'glass'
-     */
+    /** Only 'glow' exists in this build (the glass material path is deleted). */
     setMaterialMode(mode) {
-        if (!this.coreMesh) {
-            console.warn('Cannot set material mode: core mesh not created yet');
-            this.materialMode = mode; // Store for when mesh is created
-            return;
-        }
-
-        if (mode === this.materialMode) {
-            return; // Already in this mode
-        }
-
-        this.materialMode = mode;
-
-        // Create materials if they don't exist
-        if (mode === 'glass' && !this.glassMaterial) {
-            this.glassMaterial = this.createGlassMaterial();
-        } else if (mode === 'glow' && !this.glowMaterial) {
-            this.glowMaterial = this.createGlowMaterial();
-        }
-
-        // Swap material
-        const newMaterial = mode === 'glass' ? this.glassMaterial : this.glowMaterial;
-        this.coreMesh.material = newMaterial;
-
-        // Create or remove inner core based on mode
-        if (mode === 'glass') {
-            this.createInnerCore();
-        } else if (this.innerCore) {
-            // Remove inner core when switching to glow mode
-            this.coreMesh.remove(this.innerCore);
-            this.innerCore.geometry.dispose();
-            this.disposeMaterial(this.innerCore.material);
-            this.innerCore = null;
-            this.innerCoreMaterial = null;
-        }
+        this.materialMode = 'glow';
+        if (mode !== 'glow') console.warn(`[ThreeRenderer] material mode "${mode}" is not in this build`);
     }
 
     /**
-     * Update glass material properties
-     * @param {Object} props - Glass properties {transmission, thickness, emissiveMultiplier}
-     */
-    updateGlassProperties(props) {
-        if (!this.glassMaterial) return;
-
-        if (props.transmission !== undefined) {
-            this.glassMaterial.transmission = props.transmission;
-            this.glassMaterial.needsUpdate = true;
-        }
-        if (props.thickness !== undefined) {
-            this.glassMaterial.thickness = props.thickness;
-            this.glassMaterial.needsUpdate = true;
-        }
-        if (props.roughness !== undefined) {
-            this.glassMaterial.roughness = props.roughness;
-            this.glassMaterial.needsUpdate = true;
-        }
-        if (props.emissiveMultiplier !== undefined) {
-            this.glassEmissiveMultiplier = props.emissiveMultiplier;
-        }
-    }
-
-    /**
-     * Update lighting based on emotion (with smooth transitions)
-     * @param {string} emotion - Emotion name
-     * @param {Object} emotionData - Emotion visual parameters
-     * @param {number} transitionSpeed - Lerp factor (0.0 - 1.0), default 0.15
+     * Tint the lights toward the emotion colour.
+     * @param {string} emotion
+     * @param {Object} emotionData
+     * @param {number} [transitionSpeed=0.15]
      */
     updateLighting(emotion, emotionData, transitionSpeed = 0.15) {
         if (!emotionData || !emotionData.visual) return;
-
-        // Get emotion color (reuse temp color to avoid allocation)
-        const glowColor = emotionData.visual.glowColor || '#FFFFFF';
-        this._tempColor.set(glowColor);
-
-        // Get emotion intensity
+        this._tempColor.set(emotionData.visual.glowColor || '#FFFFFF');
         const targetIntensity = emotionData.visual.glowIntensity || 1.0;
-
-        // Smooth transition for key light (primary accent light)
         if (this.keyLight) {
             this.keyLight.color.lerp(this._tempColor, transitionSpeed);
-            this.keyLight.intensity +=
-                (0.8 * targetIntensity - this.keyLight.intensity) * transitionSpeed;
+            this.keyLight.intensity += (0.8 * targetIntensity - this.keyLight.intensity) * transitionSpeed;
         }
-
-        // Subtle tint for fill light (secondary light)
         if (this.fillLight) {
-            // Reuse temp color 2 for fill target (blend emotion color with white)
             this._tempColor2.copy(this._tempColor).lerp(this._white, 0.7);
             this.fillLight.color.lerp(this._tempColor2, transitionSpeed * 0.5);
-            this.fillLight.intensity +=
-                (0.3 * targetIntensity - this.fillLight.intensity) * transitionSpeed;
+            this.fillLight.intensity += (0.3 * targetIntensity - this.fillLight.intensity) * transitionSpeed;
         }
-
-        // Adjust ambient light intensity
         if (this.ambientLight) {
-            const ambientTarget = 0.4 * targetIntensity;
-            this.ambientLight.intensity +=
-                (ambientTarget - this.ambientLight.intensity) * transitionSpeed;
+            this.ambientLight.intensity += (0.4 * targetIntensity - this.ambientLight.intensity) * transitionSpeed;
         }
     }
 
     /**
-     * Update bloom pass strength based on emotion intensity (with smooth transitions)
-     * @param {number} targetIntensity - Target glow intensity (0.0 - 2.0)
-     * @param {number} transitionSpeed - Lerp factor (0.0 - 1.0), default 0.1
-     */
-    /**
-     * Normalize intensity to a narrow range using logarithmic scaling
-     * Compresses wide intensity range (0.3-10.0) to uniform output (0.8-1.2)
-     * @param {number} intensity - Raw intensity value
-     * @returns {number} Normalized intensity (0.8-1.2)
+     * Compress a wide intensity range (0.3-10) to 0.8-1.2.
+     * @param {number} intensity
      */
     normalizeIntensity(intensity) {
-        // Logarithmic scaling to compress wide range
-        const normalized = Math.log(intensity + 1) / Math.log(11); // 0.3-10.0 → 0.0-1.0
-        return 0.8 + normalized * 0.4; // Maps to 0.8-1.2 range (±20% variation)
+        const normalized = Math.log(intensity + 1) / Math.log(11);
+        return 0.8 + normalized * 0.4;
     }
+
+    /** No screen-space bloom in this build; glow lives in the shaders. */
+    updateBloom() {}
+
+    /** No refraction pass in this build (electric does not refract). */
+    addRefractionMesh() {}
+
+    /** No refraction pass in this build. */
+    removeRefractionMesh() {}
 
     /**
-     * Calculate relative luminance of RGB color (0-1 range)
-     * Uses sRGB formula with gamma correction
-     * @param {number} r - Red (0-1)
-     * @param {number} g - Green (0-1)
-     * @param {number} b - Blue (0-1)
-     * @returns {number} Relative luminance (0-1)
-     */
-    calculateColorLuminance(r, g, b) {
-        const linearize = c => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
-        return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b);
-    }
-
-    updateBloom(targetIntensity, transitionSpeed = 0.1, geometryType = null, morphBloomFlash = 0) {
-        if (this.bloomPass) {
-            const normalized = this.normalizeIntensity(targetIntensity);
-            let targetThreshold, targetStrength, targetRadius;
-
-            // Sun geometry needs controlled bloom for photosphere glow
-            if (geometryType === 'sun') {
-                targetStrength = 1.5; // Moderate glow
-                targetRadius = 0.4; // Lower radius prevents pixelation from low-res mips
-                targetThreshold = 0.3; // Lower threshold for sun glow effect
-            } else if (
-                geometryType === 'crystal' ||
-                geometryType === 'rough' ||
-                geometryType === 'heart'
-            ) {
-                // Crystal/rough/heart need bloom for light emission effect
-                targetStrength = 1.5; // Moderate bloom - 2.5 was way too intense
-                targetRadius = 0.5; // Moderate spread
-                targetThreshold = 0.65; // Above individual caps (0.5) so only combined peaks bloom — prevents fwidth wobble
-            } else if (this.materialMode === 'glass') {
-                // Glass mode needs much lower bloom strength to avoid haziness
-                // Since we're using white emissive at fixed intensity for uniformity
-                targetStrength = 0.3; // Low strength for subtle glass glow
-                targetRadius = 0.2; // Tight radius to reduce haze
-                targetThreshold = 0.85; // Fixed threshold
-            } else {
-                // Glow mode uses variable bloom
-                targetStrength = 1.0 + normalized * 0.8; // Maps to 1.0-1.8 range
-                targetRadius = 0.4;
-                targetThreshold = 0.85; // Fixed threshold
-            }
-
-            // Morph bloom flash — gentle bloom surge at geometry swap to soften the transition
-            if (morphBloomFlash > 0) {
-                targetStrength += morphBloomFlash * 1.0;
-                targetThreshold = Math.max(0.3, targetThreshold - morphBloomFlash * 0.2);
-            }
-
-            this.bloomPass.strength += (targetStrength - this.bloomPass.strength) * transitionSpeed;
-            this.bloomPass.threshold +=
-                (targetThreshold - this.bloomPass.threshold) * transitionSpeed;
-            this.bloomPass.radius = targetRadius;
-        }
-    }
-
-    /**
-     * Set camera to a preset view with smooth transition
-     * @param {string} preset - Preset name ('front', 'side', 'top', 'angle')
-     * @param {number} duration - Transition duration in ms (default 1000)
-     * @param {boolean} preserveTarget - If true, keep the current controls.target (default false)
-     */
-    setCameraPreset(preset, duration = 1000, preserveTarget = false) {
-        if (!this.controls) return;
-
-        const d = this.cameraDistance;
-        const presets = {
-            front: { x: 0, y: 0, z: d },
-            side: { x: d, y: 0, z: 0 },
-            top: { x: 0, y: d, z: 0 }, // True top-down view (directly above)
-            angle: { x: d * 0.67, y: d * 0.5, z: d * 0.67 },
-            back: { x: 0, y: 0, z: -d },
-            bottom: { x: 0, y: -d, z: 0 }, // Bottom view (directly below)
-        };
-
-        const targetPos = presets[preset];
-        if (!targetPos) {
-            console.warn(`Unknown camera preset: ${preset}`);
-            return;
-        }
-
-        // Save current target if we need to preserve it
-        const savedTarget = preserveTarget ? this.controls.target.clone() : null;
-
-        // If instant (duration = 0), set position directly
-        if (duration === 0) {
-            // Fully reset OrbitControls to initial state
-            this.controls.reset();
-            // Then set to target position
-            this.camera.position.set(targetPos.x, targetPos.y, targetPos.z);
-            // Preserve or reset the controls target
-            if (savedTarget) {
-                this.controls.target.copy(savedTarget);
-                this.camera.lookAt(savedTarget);
-            } else {
-                this.controls.target.set(0, 0, 0);
-                this.camera.lookAt(0, 0, 0);
-            }
-            this.controls.update();
-            return;
-        }
-
-        // Reset OrbitControls target to center (origin) for animated presets
-        if (!preserveTarget) {
-            this.controls.target.set(0, 0, 0);
-        }
-
-        // Smoothly animate camera to target position
-        const startPos = this.camera.position.clone();
-        const endPos = new THREE.Vector3(targetPos.x, targetPos.y, targetPos.z);
-        const startTime = performance.now();
-
-        const animate = currentTime => {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1.0);
-
-            // Ease out cubic for smooth deceleration
-            const eased = 1 - Math.pow(1 - progress, 3);
-
-            this.camera.position.lerpVectors(startPos, endPos, eased);
-            this.camera.lookAt(0, 0, 0);
-            this.controls.update();
-
-            if (progress < 1.0) {
-                this.cameraAnimationId = requestAnimationFrame(animate);
-            } else {
-                this.cameraAnimationId = null;
-            }
-        };
-
-        this.cameraAnimationId = requestAnimationFrame(animate);
-    }
-
-    /**
-     * Reset camera to default position
-     */
-    resetCamera() {
-        this.setCameraPreset('front', 1000);
-    }
-
-    /**
-     * Toggle auto-rotate on/off
-     * @param {boolean} enabled - Whether auto-rotate should be enabled
-     */
-    toggleAutoRotate(enabled) {
-        if (this.controls) {
-            this.controls.autoRotate = enabled !== undefined ? enabled : !this.controls.autoRotate;
-        }
-    }
-
-    /**
-     * Get current auto-rotate state
-     * @returns {boolean}
-     */
-    isAutoRotateEnabled() {
-        return this.controls ? this.controls.autoRotate : false;
-    }
-
-    /**
-     * Render frame
-     * @param {Object} params - Render parameters
-     * @param {Array<number>} [params.position=[0,0,0]] - Core mesh position [x, y, z]
-     * @param {Array<number>} [params.rotation=[0,0,0]] - Core mesh rotation [x, y, z]
-     * @param {number} [params.scale=1.0] - Core mesh scale (uniform)
-     * @param {Array<number>|null} [params.nonUniformScale=null] - Non-uniform scale [x, y, z] for squash/stretch
-     * @param {Array<number>} [params.glowColor=[1,1,1]] - Glow color RGB [r, g, b]
-     * @param {number} [params.glowIntensity=1.0] - Glow intensity
-     * @param {string} [params.glowColorHex=null] - Hex color for luminance normalization
-     * @param {boolean} [params.hasActiveGesture=false] - Whether a gesture is currently active
-     * @param {Array<number>} [params.calibrationRotation=[0,0,0]] - Manual rotation offset
-     * @param {number} [params.cameraRoll=0] - Camera-space roll rotation
-     * @param {SolarEclipse} [params.solarEclipse=null] - Solar eclipse manager for synchronized updates
-     * @param {number} [params.deltaTime=0] - Delta time for eclipse animation (seconds)
-     * @param {boolean} [params.hasSoul=false] - Whether this geometry has a soul layer (optimization)
-     * @param {boolean} [params.hasParticles=true] - Whether particles are enabled (optimization)
+     * Draw one frame.
+     * @param {Object} [params]
+     * @param {number[]} [params.position]
+     * @param {number[]} [params.rotation]
+     * @param {number} [params.scale]
+     * @param {number[]|null} [params.nonUniformScale]
+     * @param {number[]} [params.glowColor]
+     * @param {number} [params.glowIntensity]
+     * @param {boolean} [params.hasActiveGesture]
+     * @param {number[]} [params.calibrationRotation]
+     * @param {number} [params.cameraRoll]
+     * @param {boolean} [params.hasSoul] - draw the soul pass
+     * @param {boolean} [params.hasParticles] - draw layer 1
+     * @param {Object} [params.deformation]
      */
     render(params = {}) {
-        // Guard against calls after destroy
-        if (this._destroyed) {
-            return;
-        }
+        if (this._destroyed || this._contextLost) return;
+        if (!this.scene || !this.camera || !this.renderer || !this.coreMesh) return;
 
-        // Guard against rendering while WebGL context is lost
-        if (this._contextLost) {
-            return;
-        }
-
-        // Guard against rendering before scene is ready
-        if (!this.scene || !this.camera || !this.renderer) {
-            return;
-        }
-
-        // Guard against rendering before coreMesh exists (prevents magenta flash from empty scene + bloom)
-        if (!this.coreMesh) {
-            return;
-        }
-
-        // Guard against rendering while environment map is loading (prevents magenta flash from missing HDR)
-        // Three.js shows magenta when textures are pending/failed
-        if (this._envMapLoading) {
-            return;
-        }
-
-        // CRITICAL: Skip the very first frame to allow GPU buffers to be properly initialized
-        // This prevents garbage data (often magenta) from flashing before the first real render
+        // First frame only clears: uninitialised GPU buffers can show garbage.
         if (!this._firstFrameRendered) {
             this._firstFrameRendered = true;
-            // Clear screen to transparent on first frame instead of rendering garbage
             this.renderer.setRenderTarget(null);
             this.renderer.setClearColor(0x000000, 0);
             this.renderer.clear();
@@ -1595,1045 +330,240 @@ export class ThreeRenderer {
             position = [0, 0, 0],
             rotation = [0, 0, 0],
             scale = 1.0,
-            nonUniformScale = null, // [x, y, z] for squash/stretch effects, null for uniform scale
+            nonUniformScale = null,
             glowColor = [1, 1, 1],
             glowIntensity = 1.0,
-            // glowColorHex - available for luminance normalization (currently unused)
-            hasActiveGesture = false, // Whether a gesture is currently active
-            calibrationRotation = [0, 0, 0], // Manual rotation offset applied on top of animations
-            cameraRoll = 0, // Camera-space roll rotation applied after all other rotations
-            solarEclipse = null, // Solar eclipse manager for synchronized updates
-            deltaTime = 0, // Delta time for eclipse animation
-            morphProgress = null, // Morph progress for corona fade-in (null = no morph, 0-1 = morphing)
-            hasSoul = false, // Whether this geometry has a soul layer (skip soul pass if false)
-            hasParticles = true, // Whether particles are enabled (skip particle pass if false)
+            hasActiveGesture = false,
+            calibrationRotation = [0, 0, 0],
+            cameraRoll = 0,
+            hasSoul = false,
+            hasParticles = true,
         } = params;
 
-        // Update camera controls FIRST before any rendering
-        // This ensures touch/mouse input is processed immediately
-        if (this.controls) {
-            this.controls.update();
+        this._updateCoreMesh(
+            position,
+            rotation,
+            scale,
+            nonUniformScale,
+            glowColor,
+            glowIntensity,
+            hasActiveGesture,
+            calibrationRotation,
+            cameraRoll,
+            params.deformation
+        );
+
+        const gl = this.renderer;
+
+        // 1. Soul (layer 2) into its own target, sampled by the crystal shader.
+        if (hasSoul && this.soulRenderTarget) {
+            if (!this._cachedSoulMesh) {
+                this.scene.traverse(obj => {
+                    if (obj.name === 'crystalSoul') this._cachedSoulMesh = obj;
+                });
+            }
+            const soulMesh = this._cachedSoulMesh;
+            gl.setRenderTarget(this.soulRenderTarget);
+            gl.setClearColor(0x000000, 0);
+            gl.clear();
+            this.camera.layers.set(2);
+            gl.render(this.scene, this.camera);
+
+            const u = this.coreMesh.material?.uniforms;
+            if (u?.soulTexture) {
+                u.soulTexture.value = this.soulRenderTarget.texture;
+                if (u.soulTextureSize) {
+                    u.soulTextureSize.value.set(this.soulRenderTarget.width, this.soulRenderTarget.height);
+                }
+                if (u.soulScreenCenter && soulMesh) {
+                    this._soulPosTemp.copy(soulMesh.position).project(this.camera);
+                    u.soulScreenCenter.value.set(
+                        (this._soulPosTemp.x + 1.0) * 0.5,
+                        (this._soulPosTemp.y + 1.0) * 0.5
+                    );
+                }
+            }
         }
 
-        // Update core mesh transform
-        if (this.coreMesh) {
-            this.coreMesh.position.set(...position);
+        // 2. Scene (layer 0) to the canvas.
+        gl.setRenderTarget(null);
+        gl.setClearColor(0x000000, 0);
+        gl.clear();
+        this.camera.layers.set(0);
+        gl.render(this.scene, this.camera);
 
-            // Apply animated rotation + calibration offset using quaternions
-            // X and Y rotate around world axes, Z rotates around camera's viewing direction
+        // 3. Particles (layer 1) on top, depth-tested against the scene's depth.
+        if (hasParticles) {
+            this.camera.layers.set(1);
+            gl.render(this.scene, this.camera);
+        }
 
-            // Start with base rotation from animation system - REUSE temp objects
-            this._tempEuler.set(rotation[0], rotation[1], rotation[2], 'XYZ');
-            this._tempQuat.setFromEuler(this._tempEuler);
+        this.camera.layers.set(0);
+    }
 
-            // Apply calibration rotations - REUSE quaternions
-            this._quatX.setFromAxisAngle(this._xAxis, calibrationRotation[0]); // X-axis (world)
-            this._quatY.setFromAxisAngle(this._yAxis, calibrationRotation[1]); // Y-axis (world)
+    /** @private */
+    _updateCoreMesh(
+        position,
+        rotation,
+        scale,
+        nonUniformScale,
+        glowColor,
+        glowIntensity,
+        hasActiveGesture,
+        calibrationRotation,
+        cameraRoll,
+        deformation
+    ) {
+        const mesh = this.coreMesh;
+        mesh.position.set(...position);
 
-            // Z rotates around camera's viewing direction (camera to moon) - REUSE vector
-            this._cameraToMesh.subVectors(this.coreMesh.position, this.camera.position).normalize();
-            this._quatZ.setFromAxisAngle(this._cameraToMesh, calibrationRotation[2]); // Z-axis (camera view direction)
+        this._tempEuler.set(rotation[0], rotation[1], rotation[2], 'XYZ');
+        this._tempQuat.setFromEuler(this._tempEuler);
+        this._quatX.setFromAxisAngle(this._xAxis, calibrationRotation[0]);
+        this._quatY.setFromAxisAngle(this._yAxis, calibrationRotation[1]);
+        this._cameraToMesh.subVectors(mesh.position, this.camera.position).normalize();
+        this._quatZ.setFromAxisAngle(this._cameraToMesh, calibrationRotation[2]);
+        this._tempQuat.multiply(this._quatX).multiply(this._quatY).multiply(this._quatZ);
+        mesh.rotation.setFromQuaternion(this._tempQuat);
 
-            // Combine: base rotation, then X, then Y, then Z
-            // Reuse tempQuat for final result (already contains base rotation)
-            this._tempQuat.multiply(this._quatX);
-            this._tempQuat.multiply(this._quatY);
-            this._tempQuat.multiply(this._quatZ);
+        if (cameraRoll !== 0) {
+            this._cameraDir.subVectors(mesh.position, this.camera.position).normalize();
+            this._rollQuat.setFromAxisAngle(this._cameraDir, cameraRoll);
+            this._meshQuat.setFromEuler(mesh.rotation);
+            this._meshQuat.premultiply(this._rollQuat);
+            mesh.rotation.setFromQuaternion(this._meshQuat);
+        }
 
-            this.coreMesh.rotation.setFromQuaternion(this._tempQuat);
+        if (nonUniformScale) mesh.scale.set(nonUniformScale[0], nonUniformScale[1], nonUniformScale[2]);
+        else mesh.scale.setScalar(scale);
 
-            // Apply camera-space roll (rotates around camera's forward vector)
-            if (cameraRoll !== 0) {
-                // Get camera direction (from camera to mesh) - REUSE vector
-                this._cameraDir
-                    .subVectors(this.coreMesh.position, this.camera.position)
-                    .normalize();
-
-                // Create quaternion for rotation around camera direction - REUSE quaternion
-                this._rollQuat.setFromAxisAngle(this._cameraDir, cameraRoll);
-
-                // Apply camera roll to mesh rotation - REUSE quaternion
-                this._meshQuat.setFromEuler(this.coreMesh.rotation);
-                this._meshQuat.premultiply(this._rollQuat);
-                this.coreMesh.rotation.setFromQuaternion(this._meshQuat);
+        const u = mesh.material?.uniforms;
+        if (!u) return;
+        if (u.glowColor) {
+            this._tempColor.setRGB(...glowColor);
+            const c = u.glowColor.value;
+            if (Math.abs(this._tempColor.r - c.r) + Math.abs(this._tempColor.g - c.g) + Math.abs(this._tempColor.b - c.b) > 0.001) {
+                c.lerp(this._tempColor, 0.15);
             }
-
-            // Apply scale: use non-uniform scale for squash/stretch, otherwise uniform scale
-            if (nonUniformScale) {
-                this.coreMesh.scale.set(nonUniformScale[0], nonUniformScale[1], nonUniformScale[2]);
+        }
+        if (u.glowIntensity) {
+            const target =
+                glowIntensity === 0 ? 0 : hasActiveGesture ? glowIntensity : this.normalizeIntensity(glowIntensity);
+            const cur = u.glowIntensity.value;
+            if (Math.abs(target - cur) > 0.001) u.glowIntensity.value += (target - cur) * (hasActiveGesture ? 0.5 : 0.15);
+        }
+        if (u.deformationStrength !== undefined) {
+            const d = deformation;
+            if (d && d.enabled && d.strength > 0.001) {
+                u.deformationStrength.value = d.strength;
+                if (d.impactPoint && u.impactPoint) u.impactPoint.value.set(d.impactPoint[0], d.impactPoint[1], d.impactPoint[2]);
+                if (d.falloffRadius !== undefined && u.deformationFalloff) u.deformationFalloff.value = d.falloffRadius;
             } else {
-                this.coreMesh.scale.setScalar(scale);
-            }
-
-            // Update solar eclipse effects after transforms are applied (synchronized movement)
-            // CRITICAL: Eclipse update must happen AFTER position/rotation/scale are applied to coreMesh
-            // to ensure shadow disk and corona are positioned based on the CURRENT frame's transforms,
-            // not the previous frame's. This prevents visible lag during gesture animations.
-            if (solarEclipse) {
-                solarEclipse.update(this.camera, this.coreMesh, deltaTime, morphProgress);
-            }
-
-            // Update material properties based on material type
-            // Skip for THREE.Group (like black hole) - materials are on child meshes
-            if (this.coreMesh.material && this.coreMesh.material.uniforms) {
-                // ShaderMaterial (glow material) - update uniforms
-                // Only update glowColor if the uniform exists (crystal uses emotionColor instead)
-                if (this.coreMesh.material.uniforms.glowColor) {
-                    this._tempColor.setRGB(...glowColor);
-                    // Only lerp if color difference is significant (avoids unnecessary work when idle)
-                    const currentColor = this.coreMesh.material.uniforms.glowColor.value;
-                    const colorDiff =
-                        Math.abs(this._tempColor.r - currentColor.r) +
-                        Math.abs(this._tempColor.g - currentColor.g) +
-                        Math.abs(this._tempColor.b - currentColor.b);
-                    if (colorDiff > 0.001) {
-                        currentColor.lerp(this._tempColor, 0.15);
-                    }
-                }
-
-                // Normalize intensity to prevent huge brightness differences between emotions
-                // Use wider range during gestures to make effects visible
-                // Only update glowIntensity if the uniform exists (crystal uses emissiveIntensity instead)
-                if (this.coreMesh.material.uniforms.glowIntensity) {
-                    // Special case: if glowIntensity is 0 (glow disabled), pass 0 directly
-                    let targetIntensity;
-                    if (glowIntensity === 0) {
-                        targetIntensity = 0;
-                    } else {
-                        if (hasActiveGesture) {
-                            // During gestures: bypass normalization entirely, use raw intensity
-                            // Direct mapping: gesture outputs 1.0-1.8 → shader sees 1.0-1.8
-                            targetIntensity = glowIntensity;
-                        } else {
-                            // Normal state: use normalized intensity for consistent emotions
-                            targetIntensity = this.normalizeIntensity(glowIntensity);
-                        }
-                    }
-                    const currentIntensity = this.coreMesh.material.uniforms.glowIntensity.value;
-                    // Only lerp if intensity difference is significant (avoids unnecessary work when idle)
-                    const intensityDiff = Math.abs(targetIntensity - currentIntensity);
-                    if (intensityDiff > 0.001) {
-                        // Use faster lerp (0.5) for gestures, slower (0.15) for smooth emotion transitions
-                        const lerpSpeed = hasActiveGesture ? 0.5 : 0.15;
-                        this.coreMesh.material.uniforms.glowIntensity.value +=
-                            (targetIntensity - currentIntensity) * lerpSpeed;
-                    }
-                }
-
-                // ═══════════════════════════════════════════════════════════════
-                // DEFORMATION UNIFORMS - Localized vertex displacement
-                // ═══════════════════════════════════════════════════════════════
-                if (this.coreMesh.material.uniforms.deformationStrength !== undefined) {
-                    const d = params.deformation;
-
-                    if (d && d.enabled && d.strength > 0.001) {
-                        this.coreMesh.material.uniforms.deformationStrength.value = d.strength;
-
-                        if (d.impactPoint && this.coreMesh.material.uniforms.impactPoint) {
-                            this.coreMesh.material.uniforms.impactPoint.value.set(
-                                d.impactPoint[0],
-                                d.impactPoint[1],
-                                d.impactPoint[2]
-                            );
-                        }
-                        if (
-                            d.falloffRadius !== undefined &&
-                            this.coreMesh.material.uniforms.deformationFalloff
-                        ) {
-                            this.coreMesh.material.uniforms.deformationFalloff.value =
-                                d.falloffRadius;
-                        }
-                    } else {
-                        // No deformation - reset
-                        this.coreMesh.material.uniforms.deformationStrength.value = 0;
-                    }
-                }
-            } else if (this.coreMesh.material && this.coreMesh.material.emissive) {
-                // MeshPhysicalMaterial (glass material) - update emissive properties
-                // BLOOM + COLOR SOLUTION:
-                // User wants BOTH uniform bloom AND visible emotion colors
-                // Compromise: Use colored emissive with per-color intensity compensation
-                // to MINIMIZE (not eliminate) brightness differences
-
-                // Apply emotion color to emissive
-                this._tempColor.setRGB(...glowColor);
-                this.coreMesh.material.emissive.lerp(this._tempColor, 0.15);
-
-                // Use the ORIGINAL glowIntensity which compensates for color luminance
-                // But keep base multiplier low to minimize remaining differences
-                const compensatedIntensity = glowIntensity * 0.15; // Much lower than glow mode
-                const currentEmissiveIntensity = this.coreMesh.material.emissiveIntensity;
-                // Use faster lerp (0.5) for gestures, slower (0.15) for smooth emotion transitions
-                const lerpSpeed = hasActiveGesture ? 0.5 : 0.15;
-                this.coreMesh.material.emissiveIntensity +=
-                    (compensatedIntensity - currentEmissiveIntensity) * lerpSpeed;
-
-                // Keep base color white for clean glass
-                this.coreMesh.material.color.lerp(this._white, 0.15);
-            }
-
-            // Control inner core visibility and color based on emotion
-            if (this.innerCore) {
-                // Hide inner core when glow is disabled (intensity = 0)
-                this.innerCore.visible = glowIntensity > 0;
-
-                // Update inner core color to match emotion
-                if (this.innerCoreMaterial) {
-                    this._tempColor.setRGB(...glowColor);
-                    this.innerCoreMaterial.emissive.lerp(this._tempColor, 0.15);
-                }
-            }
-        }
-
-        // Update animation mixer if present (for GLTF models)
-        if (this.mixer) {
-            const delta = this.clock.getDelta();
-            this.mixer.update(delta);
-        }
-
-        // Manually clear with transparent background (needed when autoClear = false)
-        this.renderer.clear();
-
-        // Progressive warmup after tab-back: render scene only, skip bloom/distortion/particles.
-        // Each frame recompiles the shaders it touches. Frame 1 = scene shaders.
-        // After warmup, full pipeline resumes and bloom/distortion shaders compile incrementally.
-        // Render with post-processing if enabled, otherwise direct render
-        if (this.composer) {
-            // === STEP 0: Render soul (layer 2) to texture for refraction sampling ===
-            // OPTIMIZATION: Skip soul pass entirely if geometry doesn't have a soul
-            if (this.soulRenderTarget && hasSoul) {
-                // OPTIMIZATION: Use cached soul mesh reference instead of traversing every frame
-                if (!this._cachedSoulMesh) {
-                    this.scene.traverse(obj => {
-                        if (obj.name === 'crystalSoul') this._cachedSoulMesh = obj;
-                    });
-                }
-                const soulMesh = this._cachedSoulMesh;
-
-                this.renderer.setRenderTarget(this.soulRenderTarget);
-                this.renderer.clear();
-
-                // Render only soul layer (layer 2)
-                this.camera.layers.set(2);
-                this.renderer.render(this.scene, this.camera);
-
-                // Pass soul texture and its size to crystal shader for refraction sampling
-                if (this.coreMesh?.material?.uniforms?.soulTexture) {
-                    this.coreMesh.material.uniforms.soulTexture.value =
-                        this.soulRenderTarget.texture;
-                    // Pass the actual render target size for correct UV mapping
-                    if (this.coreMesh.material.uniforms.soulTextureSize) {
-                        this.coreMesh.material.uniforms.soulTextureSize.value.set(
-                            this.soulRenderTarget.width,
-                            this.soulRenderTarget.height
-                        );
-                    }
-                    // Compute soul's screen center position for refraction sampling
-                    if (this.coreMesh.material.uniforms.soulScreenCenter && soulMesh) {
-                        // OPTIMIZATION: Reuse pooled vector instead of cloning every frame
-                        this._soulPosTemp.copy(soulMesh.position);
-                        this._soulPosTemp.project(this.camera);
-                        // Convert from NDC (-1 to 1) to UV (0 to 1)
-                        const soulScreenU = (this._soulPosTemp.x + 1.0) * 0.5;
-                        const soulScreenV = (this._soulPosTemp.y + 1.0) * 0.5;
-                        this.coreMesh.material.uniforms.soulScreenCenter.value.set(
-                            soulScreenU,
-                            soulScreenV
-                        );
-                    }
-                }
-
-                this.renderer.setRenderTarget(null);
-            }
-
-            // === STEP 0.5: Render scene WITHOUT refraction meshes to texture ===
-            // Refraction shaders sample this texture with distorted UVs to bend
-            // the background through their volume (screen-space refraction).
-            // They output at full opacity — the refraction is baked into the color.
-            if (
-                this.iceRefractionTarget &&
-                this._refractionMeshes &&
-                this._refractionMeshes.size > 0
-            ) {
-                // Hide refraction meshes
-                for (const mesh of this._refractionMeshes) {
-                    mesh.visible = false;
-                }
-
-                // Temporarily set scene.background for refraction capture.
-                // The canvas is transparent (alpha:true) so the CSS background behind
-                // it is invisible to WebGL. Setting scene.background lets refracting
-                // materials distort the actual page background, not just 3D geometry.
-                // Auto-detect CSS background if no manual override is set.
-                this._syncAutoRefractionBackground();
-                const savedBackground = this.scene.background;
-                const refractionBg = this._refractionBackground || this._autoRefractionBackground;
-                if (refractionBg) {
-                    this.scene.background = refractionBg;
-                }
-
-                // Render scene (layer 0) without refraction meshes to refraction target
-                this.renderer.setRenderTarget(this.iceRefractionTarget);
-                this.renderer.setClearColor(0x000000, 0);
-                this.renderer.clear();
-                this.camera.layers.set(0);
-                this.renderer.render(this.scene, this.camera);
-                this.renderer.setRenderTarget(null);
-
-                // Restore scene.background to null (transparent for CSS composite)
-                this.scene.background = savedBackground;
-
-                // Restore refraction meshes and pass texture to their materials
-                for (const mesh of this._refractionMeshes) {
-                    mesh.visible = true;
-                    if (mesh.material?.uniforms?.uBackgroundTexture) {
-                        mesh.material.uniforms.uBackgroundTexture.value =
-                            this.iceRefractionTarget.texture;
-                        mesh.material.uniforms.uResolution.value.set(
-                            this.iceRefractionTarget.width,
-                            this.iceRefractionTarget.height
-                        );
-                        mesh.material.uniforms.uHasBackground.value = 1;
-                    }
-                }
-            }
-
-            // === STEP 0.75: Render distortion map (if active sources) ===
-            if (this.distortionManager) {
-                this.distortionManager.update(deltaTime / 1000); // ms → seconds
-                const hasDistortion = this.distortionManager.hasActiveSources();
-
-                this.distortionPass.enabled = hasDistortion;
-                // Always bind texture so it's never stale after tab-out recreation
-                this.distortionPass.uniforms.tDistortion.value = this.distortionTarget.texture;
-
-                if (hasDistortion) {
-                    // Ensure camera sees layer 0 — previous steps (soul render) may
-                    // leave it on layer 2, making distortion meshes invisible
-                    this.camera.layers.set(0);
-                    this.distortionManager.render(this.distortionTarget);
-                }
-            }
-
-            // === STEP 0.8: Update particle atmospherics (smoke/mist) ===
-            // Particles render directly in the main scene (no separate RT)
-            if (this.particleAtmospherics) {
-                this.particleAtmospherics.update(deltaTime / 1000);
-            }
-
-            // === STEP 1: Render main scene (layer 0) through bloom (+ distortion if active) to screen ===
-            this.camera.layers.set(0);
-            this.composer.render();
-
-            // === STEP 2: Render particles (layer 1) to separate render target ===
-            // OPTIMIZATION: Skip particle pass entirely if particles are disabled
-            if (hasParticles && this.particleRenderTarget && this.particleBloomPass) {
-                // Reset WebGL state before particle rendering
-                // This ensures procedural element shaders don't leave dirty state
-                this.renderer.state.reset();
-
-                // Clear particle render target with WHITE (non-black) to prevent dark halos
-                this.renderer.setRenderTarget(this.particleRenderTarget);
-                this.renderer.setClearColor(0xffffff, 0); // White RGB, but 0 alpha
-                this.renderer.clear();
-
-                // DEPTH PASS: Render crystal (layer 0) to depth buffer only
-                // This ensures particles behind the crystal are properly occluded
-                // Use overrideMaterial to render only to depth buffer (no color output)
-                this.camera.layers.set(0);
-                const depthMaterial =
-                    this._depthOnlyMaterial ||
-                    (this._depthOnlyMaterial = new THREE.MeshBasicMaterial({
-                        colorWrite: false, // Don't write to color buffer
-                        depthWrite: true, // Only write to depth buffer
-                    }));
-                this.scene.overrideMaterial = depthMaterial;
-                this.renderer.render(this.scene, this.camera);
-                this.scene.overrideMaterial = null;
-
-                // Now render particles with depth testing against the crystal
-                this.camera.layers.set(1);
-                this.renderer.render(this.scene, this.camera);
-
-                // Apply bloom to particle render target
-                const particleReadBuffer = this.particleRenderTarget;
-
-                // Render bloom pass on particles (to screen with additive blending)
-                this.particleBloomPass.renderToScreen = true;
-                this.particleBloomPass.render(this.renderer, null, particleReadBuffer, 0, false);
-
-                // Reset clear color
-                this.renderer.setClearColor(0x000000, 0);
-                this.renderer.setRenderTarget(null);
-            } else if (hasParticles) {
-                // Fallback: Render particles directly (no bloom)
-                this.camera.layers.set(1);
-                this.renderer.render(this.scene, this.camera);
-            }
-
-            // Reset camera to see all layers
-            this.camera.layers.enableAll();
-
-            // === STEP 3: Render glow layer (if active) ===
-            // This is an isolated screen-space overlay that only activates during glow gestures
-            if (this.glowLayer && this.glowHalo && this.glowLayer.isActive() && getSurface() !== 'light') {
-                this.glowLayer.render(this.renderer);
-            }
-
-            // === STEP 4: Render crack layer (if active) ===
-            // Post-processing crack overlay that works on any geometry
-            if (this.crackLayer && this.crackLayer.isActive()) {
-                this.crackLayer.render(this.renderer);
-            }
-        } else {
-            this.renderer.render(this.scene, this.camera);
-
-            // Render glow layer even without composer
-            if (this.glowLayer && this.glowHalo && this.glowLayer.isActive() && getSurface() !== 'light') {
-                this.glowLayer.render(this.renderer);
-            }
-
-            // Render crack layer even without composer
-            if (this.crackLayer && this.crackLayer.isActive()) {
-                this.crackLayer.render(this.renderer);
+                u.deformationStrength.value = 0;
             }
         }
     }
 
     /**
-     * Pre-link an object's shader program before it joins the scene graph.
-     *
-     * Three.js defers the LINK_STATUS check to the program's first use, so a lazily
-     * compiled material stalls inside render() on the frame it first becomes visible.
-     * compileAsync uses KHR_parallel_shader_compile to let the driver link on its own
-     * threads, keeping the main thread responsive. Falls back to lazy compilation if
-     * the renderer is gone or the context is lost.
-     *
-     * @param {THREE.Object3D} object - Object to precompile; need not be in the scene yet
-     * @returns {Promise<void>} Resolves once the object can render without stalling
+     * Pre-link an object's shader program off the main thread (KHR_parallel_shader_compile).
+     * @param {THREE.Object3D} object
+     * @returns {Promise<void>}
      */
     async compileObjectAsync(object) {
-        if (!object || !this.renderer || !this.camera || this._contextLost || this._destroyed) {
-            return;
-        }
-
-        // Three bakes outputColorSpace and toneMapping into the program cache key, and
-        // both depend on whether a render target is bound: rendering to screen uses
-        // sRGB + ACES, rendering offscreen uses Linear + NoToneMapping. Precompiling
-        // under the wrong binding builds a program the real frame never uses and just
-        // moves the stall back into render(). Bind whatever render() will bind — layer 0
-        // goes through the composer when post-processing is on, straight to screen when
-        // it is off — so exactly one variant is compiled, and it is the one used.
+        if (!object || !this.renderer || !this.camera || this._contextLost || this._destroyed) return;
         const savedTarget = this.renderer.getRenderTarget();
-        const compileTarget = this.composer ? this.composer.readBuffer : null;
-
         try {
-            this.renderer.setRenderTarget(compileTarget);
-            // Three polls KHR_parallel_shader_compile from its own timer, so a material
-            // disposed mid-poll throws outside this promise chain and leaves it pending
-            // forever. Cap the wait: callers await this before using the object, and a
-            // late-linking program merely falls back to stalling once inside render().
+            // Layer 0 renders straight to the canvas, so compile the canvas variant.
+            this.renderer.setRenderTarget(null);
             await Promise.race([
                 this.renderer.compileAsync(object, this.camera, this.scene),
                 new Promise(resolve => setTimeout(resolve, COMPILE_TIMEOUT_MS)),
             ]);
         } catch (error) {
-            // Non-fatal: the program still links lazily on first render
             console.warn('[ThreeRenderer] compileAsync failed, falling back to lazy compile', error);
         } finally {
-            if (!this._destroyed && this.renderer) {
-                this.renderer.setRenderTarget(savedTarget);
-            }
+            if (!this._destroyed && this.renderer) this.renderer.setRenderTarget(savedTarget);
         }
     }
 
     /**
-     * Register a mesh for screen-space refraction (ice instanced meshes).
-     * During rendering, registered meshes are hidden for a background pass,
-     * and their materials receive the background texture for refraction sampling.
-     *
-     * Registration is not free — while any mesh is registered the renderer performs an
-     * extra full-scene pass every frame. Register only while the element is on screen.
-     * @param {THREE.Mesh} mesh - The mesh to register
-     */
-    addRefractionMesh(mesh) {
-        if (mesh && this._refractionMeshes) {
-            this._refractionMeshes.add(mesh);
-        }
-    }
-
-    /**
-     * Unregister a mesh from screen-space refraction.
-     * @param {THREE.Mesh} mesh - The mesh to unregister
-     */
-    removeRefractionMesh(mesh) {
-        if (this._refractionMeshes) {
-            this._refractionMeshes.delete(mesh);
-        }
-    }
-
-    /**
-     * Auto-detect the CSS background behind the canvas and sync it to
-     * _autoRefractionBackground for use in the refraction pass.
-     * Walks up the DOM from the canvas to find the nearest ancestor with a
-     * visible background (image URL or solid color). Caches aggressively —
-     * only performs expensive work when the CSS value actually changes.
-     * @private
-     */
-    _syncAutoRefractionBackground() {
-        // Manual override takes precedence — skip auto-detection entirely
-        if (this._refractionBackground) return;
-
-        const canvas = this.renderer.domElement;
-        if (!canvas) return;
-
-        let bgColor = null;
-        let bgImage = null;
-
-        // Walk up the DOM tree from the canvas to find the nearest visible background
-        let el = canvas.parentElement;
-        while (el) {
-            const style = window.getComputedStyle(el);
-
-            // Check backgroundImage first — images render on top of colors in CSS
-            if (style.backgroundImage !== 'none') {
-                const urlMatch = style.backgroundImage.match(/url\(["']?(.+?)["']?\)/);
-                if (urlMatch) {
-                    bgImage = urlMatch[1];
-                    break;
-                }
-            }
-
-            // Check backgroundColor — skip fully transparent
-            const bg = style.backgroundColor;
-            if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
-                bgColor = bg;
-                break;
-            }
-
-            el = el.parentElement;
-        }
-
-        const cache = this._bgAutoCache;
-
-        // Handle image backgrounds
-        if (bgImage) {
-            if (bgImage !== cache.imageUrl) {
-                cache.imageUrl = bgImage;
-                cache.colorStr = null; // Clear color cache — image takes over
-                new THREE.TextureLoader().load(bgImage, (tex) => {
-                    tex.colorSpace = THREE.SRGBColorSpace;
-                    if (cache.texture) cache.texture.dispose();
-                    cache.texture = tex;
-                    this._autoRefractionBackground = tex;
-                });
-            }
-            return;
-        }
-
-        // Handle solid color backgrounds
-        if (bgColor) {
-            if (bgColor !== cache.colorStr) {
-                cache.colorStr = bgColor;
-                // Dispose any stale image texture
-                if (cache.texture) {
-                    cache.texture.dispose();
-                    cache.texture = null;
-                    cache.imageUrl = null;
-                }
-                if (!cache.color) cache.color = new THREE.Color();
-                cache.color.setStyle(bgColor);
-                this._autoRefractionBackground = cache.color;
-            }
-            return;
-        }
-
-        // No visible background found — clear auto background
-        this._autoRefractionBackground = null;
-    }
-
-    /**
-     * Set a background texture for refraction capture (manual override).
-     * When set to a non-null value, this overrides the automatic CSS background
-     * detection. Set to null to clear the override and return to auto-detection.
-     *
-     * The scene canvas is transparent (alpha:true), so the CSS background behind it
-     * is invisible to WebGL. During refraction capture, this texture is temporarily
-     * set as scene.background so refracting materials can distort it.
-     * @param {THREE.Texture|string|null} textureOrUrl - THREE.Texture, image URL string, or null to clear
-     */
-    setRefractionBackground(textureOrUrl) {
-        // Dispose previous texture if we own it (loaded from URL)
-        if (this._refractionBackgroundOwned && this._refractionBackground) {
-            this._refractionBackground.dispose();
-        }
-        this._refractionBackgroundOwned = false;
-
-        if (!textureOrUrl) {
-            this._refractionBackground = null;
-        } else if (typeof textureOrUrl === 'string') {
-            new THREE.TextureLoader().load(textureOrUrl, tex => {
-                tex.colorSpace = THREE.SRGBColorSpace;
-                // Dispose previous if replaced during async load
-                if (this._refractionBackgroundOwned && this._refractionBackground) {
-                    this._refractionBackground.dispose();
-                }
-                this._refractionBackground = tex;
-                this._refractionBackgroundOwned = true;
-            });
-        } else {
-            this._refractionBackground = textureOrUrl;
-        }
-    }
-
-    /**
-     * Update glow layer for gesture effects
-     * Called from Core3DManager when gesture provides glowBoost output
-     * @param {number} glowAmount - Glow boost amount (0 = off, >0 = active glow halo)
-     * @param {Array|THREE.Color} glowColor - RGB color for the glow
-     * @param {THREE.Vector3} worldPosition - World position of the glow source (typically core mesh center)
-     * @param {number} deltaTime - Time since last frame in milliseconds
-     */
-    updateGlowLayer(glowAmount, glowColor, worldPosition, deltaTime) {
-        if (this.glowLayer) {
-            this.glowLayer.setGlow(glowAmount, glowColor, worldPosition);
-            this.glowLayer.update(deltaTime, this.camera);
-        }
-    }
-
-    /**
-     * Update crack layer for gesture effects (PERSISTENT DAMAGE MODEL)
-     * Called from Core3DManager when gesture provides crack output
-     *
-     * Crack impacts accumulate (max 3) and persist until healed.
-     * - triggers: Array of new impacts to add
-     * - healTrigger: Starts healing animation that clears ALL impacts
-     *
-     * @param {Object} crackParams - Crack parameters from gesture
-     * @param {number} deltaTime - Time since last frame in milliseconds
-     */
-    updateCrackLayer(crackParams, deltaTime) {
-        if (!this.crackLayer) return;
-
-        // Add new crack impacts (legacy screen-space CrackLayer)
-        if (crackParams && crackParams.triggers && crackParams.triggers.length > 0) {
-            for (const trigger of crackParams.triggers) {
-                this.crackLayer.addImpact({
-                    centerUV: trigger.centerUV,
-                    direction: trigger.direction,
-                    propagation: trigger.propagation,
-                    amount: trigger.amount,
-                });
-            }
-            // Update glow if provided
-            if (crackParams.glowStrength !== undefined) {
-                this.crackLayer.glowStrength = crackParams.glowStrength;
-            }
-        }
-
-        // Start healing animation (clears all cracks over duration)
-        if (crackParams.healTrigger) {
-            this.crackLayer.startHealing(crackParams.healDuration || 1500);
-        }
-
-        // Always update for animation
-        this.crackLayer.update(deltaTime, this.camera);
-    }
-
-    /**
-     * Enable or disable screen-space ambient occlusion.
-     * @param {boolean} enabled - Whether AO is active
-     * @param {Object} [options] - AO parameters
-     * @param {number} [options.intensity] - AO strength (0 = none, 1 = full)
-     * @param {number} [options.radius] - View-space sampling radius
-     * @param {number} [options.minDistance] - Min depth diff for occlusion
-     * @param {number} [options.maxDistance] - Max depth diff for occlusion
-     */
-    setAmbientOcclusion(enabled, options = {}) {
-        if (!this.aoPass) return;
-        this.aoPass.enabled = enabled;
-        if (options.intensity !== undefined) this.aoPass.intensity = options.intensity;
-        if (options.fineRadius !== undefined) this.aoPass.fineRadius = options.fineRadius;
-        if (options.coarseRadius !== undefined) this.aoPass.coarseRadius = options.coarseRadius;
-    }
-
-    /**
-     * Resize renderer and camera
-     * @param {number} width - Canvas width
-     * @param {number} height - Canvas height
+     * @param {number} width - CSS px
+     * @param {number} height - CSS px
      */
     resize(width, height) {
+        if (!this.renderer) return;
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
-
         this.renderer.setSize(width, height, false);
-
-        if (this.composer) {
-            // Get actual drawing buffer size (includes pixel ratio)
-            const drawingBufferSize = new THREE.Vector2();
-            this.renderer.getDrawingBufferSize(drawingBufferSize);
-
-            // CRITICAL: composer.setSize() expects CSS logical pixels, NOT drawing buffer pixels.
-            // It internally multiplies by its own _pixelRatio (copied from renderer).
-            // Passing drawingBufferSize would double-scale: CSS×DPR×DPR, breaking soul UV mapping.
-            this.composer.setSize(width, height);
-
-            // PERFORMANCE: Resize bloom passes to half resolution
-            // Bloom is inherently blurry so half resolution is visually identical
-            // This reduces GPU work by 4x for bloom (26 render passes at 1/4 pixel count)
-            const halfWidth = Math.floor(drawingBufferSize.x * 0.5);
-            const halfHeight = Math.floor(drawingBufferSize.y * 0.5);
-
-            // Main bloom pass - MUST use setSize() not resolution.set()
-            // resolution.set() only updates the Vector2 property, not the actual render targets
-            if (this.bloomPass) {
-                this.bloomPass.setSize(halfWidth, halfHeight);
-            }
-
-            // Motion blur pass - full resolution
-            if (this.motionBlurPass) {
-                this.motionBlurPass.setSize(drawingBufferSize.x, drawingBufferSize.y);
-            }
-
-            // Resize particle render target (needs full resolution for sharp particles)
-            if (this.particleRenderTarget) {
-                this.particleRenderTarget.setSize(drawingBufferSize.x, drawingBufferSize.y);
-            }
-
-            // Particle bloom pass - also half resolution for performance
-            if (this.particleBloomPass) {
-                this.particleBloomPass.setSize(halfWidth, halfHeight);
-            }
-
-            // Resize soul render target for refraction
-            if (this.soulRenderTarget) {
-                this.soulRenderTarget.setSize(drawingBufferSize.x, drawingBufferSize.y);
-            }
-
-            // Resize ice refraction render target
-            if (this.iceRefractionTarget) {
-                this.iceRefractionTarget.setSize(drawingBufferSize.x, drawingBufferSize.y);
-            }
-
-            // Resize distortion render target (half resolution)
-            if (this.distortionTarget) {
-                this.distortionTarget.setSize(halfWidth, halfHeight);
-            }
-
-            // Resize AO pass internal targets (half resolution)
-            if (this.aoPass) {
-                this.aoPass.setSize(drawingBufferSize.x, drawingBufferSize.y);
-            }
-
-            // Update resolution uniform for crystal shader refraction
-            if (this.coreMesh?.material?.uniforms?.resolution) {
-                this.coreMesh.material.uniforms.resolution.value.set(
-                    drawingBufferSize.x,
-                    drawingBufferSize.y
-                );
-            }
+        this.renderer.getDrawingBufferSize(this._drawingBufferSize);
+        if (this.soulRenderTarget) {
+            this.soulRenderTarget.setSize(this._drawingBufferSize.x, this._drawingBufferSize.y);
+        }
+        if (this.coreMesh?.material?.uniforms?.resolution) {
+            this.coreMesh.material.uniforms.resolution.value.set(
+                this._drawingBufferSize.x,
+                this._drawingBufferSize.y
+            );
         }
     }
 
     /**
-     * Dispose material and all its textures (prevent GPU memory leaks)
-     * @param {THREE.Material} material - Material to dispose
-     * @private
+     * Dispose a material and every texture it owns.
+     * @param {THREE.Material} material
      */
     disposeMaterial(material) {
         if (!material) return;
-
-        // Dispose all texture properties (map, normalMap, envMap, etc.)
-        const textureProperties = [
-            'map',
-            'lightMap',
-            'bumpMap',
-            'normalMap',
-            'specularMap',
-            'envMap',
-            'alphaMap',
-            'aoMap',
-            'displacementMap',
-            'emissiveMap',
-            'gradientMap',
-            'metalnessMap',
-            'roughnessMap',
-        ];
-
-        textureProperties.forEach(prop => {
-            if (material[prop]) {
-                material[prop].dispose();
-            }
-        });
-
-        // For ShaderMaterial, dispose textures and clear Color objects in uniforms
-        if (material.uniforms) {
-            Object.values(material.uniforms).forEach(uniform => {
-                if (uniform.value) {
-                    // Dispose textures
-                    if (uniform.value.isTexture) {
-                        uniform.value.dispose();
-                        uniform.value = null;
-                    }
-                    // Clear Color objects to break references
-                    else if (uniform.value.isColor) {
-                        uniform.value = null;
-                    }
-                    // Clear Vector objects to break references
-                    else if (
-                        uniform.value.isVector2 ||
-                        uniform.value.isVector3 ||
-                        uniform.value.isVector4
-                    ) {
-                        uniform.value = null;
-                    }
-                }
-            });
+        for (const prop of ['map', 'normalMap', 'envMap', 'alphaMap', 'emissiveMap']) {
+            if (material[prop]) material[prop].dispose();
         }
-
-        // Dispose the material itself
+        if (material.uniforms) {
+            for (const uniform of Object.values(material.uniforms)) {
+                const v = uniform.value;
+                if (!v) continue;
+                // The soul target's texture is owned by the render target, not the material.
+                if (v.isTexture && v !== this.soulRenderTarget?.texture) {
+                    v.dispose();
+                    uniform.value = null;
+                } else if (v.isColor || v.isVector2 || v.isVector3 || v.isVector4) {
+                    uniform.value = null;
+                }
+            }
+        }
         material.dispose();
     }
 
-    /**
-     * Cleanup resources
-     */
+    /** Release every GPU resource. */
     destroy() {
-        // Set destroyed flag first to prevent any pending render calls
         this._destroyed = true;
-
-        // Remove WebGL context event listeners
         if (this.renderer?.domElement) {
-            this.renderer.domElement.removeEventListener(
-                'webglcontextlost',
-                this._boundHandleContextLost,
-                false
-            );
+            this.renderer.domElement.removeEventListener('webglcontextlost', this._boundHandleContextLost, false);
             this.renderer.domElement.removeEventListener(
                 'webglcontextrestored',
                 this._boundHandleContextRestored,
                 false
             );
-            if (this._boundImmediateUpdate) {
-                this.renderer.domElement.removeEventListener('pointermove', this._boundImmediateUpdate);
-                this.renderer.domElement.removeEventListener('pointerdown', this._boundImmediateUpdate);
-            }
         }
-
-        // Remove visibility change and focus listeners
-        document.removeEventListener('visibilitychange', this._boundHandleVisibilityChange);
-        window.removeEventListener('focus', this._boundHandleFocusRecovery);
-
-        // Cancel camera animation RAF
-        if (this.cameraAnimationId) {
-            cancelAnimationFrame(this.cameraAnimationId);
-            this.cameraAnimationId = null;
-        }
-
-        // Dispose inner core
-        if (this.innerCore) {
-            if (this.coreMesh) {
-                this.coreMesh.remove(this.innerCore);
-            }
-            this.innerCore.geometry.dispose();
-            this.disposeMaterial(this.innerCore.material);
-            this.innerCore = null;
-            this.innerCoreMaterial = null;
-        }
-
-        // Dispose core mesh
         if (this.coreMesh) {
             this.scene.remove(this.coreMesh);
-            this.coreMesh.geometry.dispose();
+            this.coreMesh.geometry?.dispose();
             this.disposeMaterial(this.coreMesh.material);
             this.coreMesh = null;
         }
-
-        // Dispose shared materials (glow and glass)
         if (this.glowMaterial) {
             this.disposeMaterial(this.glowMaterial);
             this.glowMaterial = null;
         }
-        if (this.glassMaterial) {
-            this.disposeMaterial(this.glassMaterial);
-            this.glassMaterial = null;
-        }
-
-        // Dispose AO pass
-        if (this.aoPass) {
-            this.aoPass.dispose();
-            this.aoPass = null;
-        }
-
-        // Dispose motion blur pass
-        if (this.motionBlurPass) {
-            this.motionBlurPass.dispose();
-            this.motionBlurPass = null;
-        }
-
-        // Dispose composer
-        if (this.composer) {
-            this.composer.dispose();
-            this.composer = null;
-        }
-
-        // Dispose particle render target and bloom pass
-        if (this.particleRenderTarget) {
-            this.particleRenderTarget.dispose();
-            this.particleRenderTarget = null;
-        }
-        if (this.particleBloomPass) {
-            this.particleBloomPass.dispose();
-            this.particleBloomPass = null;
-        }
-
-        // Dispose soul render target (for refraction)
         if (this.soulRenderTarget) {
             this.soulRenderTarget.dispose();
             this.soulRenderTarget = null;
         }
-
-        // Dispose ice refraction render target
-        if (this.iceRefractionTarget) {
-            this.iceRefractionTarget.dispose();
-            this.iceRefractionTarget = null;
-        }
-        if (this._refractionMeshes) {
-            this._refractionMeshes.clear();
-            this._refractionMeshes = null;
-        }
-
-        // Dispose distortion system
-        if (this.distortionTarget) {
-            this.distortionTarget.dispose();
-            this.distortionTarget = null;
-        }
-        if (this.distortionPass) {
-            this.distortionPass.dispose();
-            this.distortionPass = null;
-        }
-        if (this.distortionManager) {
-            this.distortionManager.dispose();
-            this.distortionManager = null;
-        }
-
-        // Dispose particle atmospherics
-        if (this.particleAtmospherics) {
-            this.particleAtmospherics.dispose();
-            this.particleAtmospherics = null;
-        }
-
-        // Dispose glow layer
-        if (this.glowLayer) {
-            this.glowLayer.dispose();
-            this.glowLayer = null;
-        }
-
-        // Dispose crack layer
-        if (this.crackLayer) {
-            this.crackLayer.dispose();
-            this.crackLayer = null;
-        }
-
-        // Dispose camera preset manager
-        if (this.cameraPresetManager) {
-            this.cameraPresetManager.dispose();
-            this.cameraPresetManager = null;
-        }
-
-        // Dispose controls (removes DOM event listeners)
-        if (this.controls) {
-            this.controls.dispose();
-            this.controls = null;
-        }
-
-        // Dispose lights with shadow maps
-        if (this.keyLight?.shadow?.map) this.keyLight.shadow.map.dispose();
-        if (this.fillLight?.shadow?.map) this.fillLight.shadow.map.dispose();
-        if (this.rimLight?.shadow?.map) this.rimLight.shadow.map.dispose();
-        this.keyLight = null;
-        this.fillLight = null;
-        this.rimLight = null;
-        this.ambientLight = null;
-        this.accentLight1 = null;
-        this.accentLight2 = null;
-        this.accentLight3 = null;
-
-        // Dispose refraction background texture if we own it
-        if (this._refractionBackgroundOwned && this._refractionBackground) {
-            this._refractionBackground.dispose();
-        }
-        this._refractionBackground = null;
-
-        // Dispose auto-detected refraction background resources
-        if (this._bgAutoCache) {
-            if (this._bgAutoCache.texture) {
-                this._bgAutoCache.texture.dispose();
-            }
-            this._bgAutoCache = null;
-        }
-        this._autoRefractionBackground = null;
-
-        // Dispose environment map
-        if (this.envMap) {
-            this.envMap.dispose();
-            this.envMap = null;
-        }
-
-        // CRITICAL: Dispose procedural environment resources (GPU memory leak fix)
-        if (this._envCubeRenderTarget) {
-            this._envCubeRenderTarget.dispose();
-            this._envCubeRenderTarget = null;
-        }
-        if (this._envScene) {
-            // Dispose all geometries and materials in environment scene
-            this._envScene.traverse(obj => {
-                if (obj.geometry) obj.geometry.dispose();
-                if (obj.material) this.disposeMaterial(obj.material);
-            });
-            this._envScene.clear();
-            this._envScene = null;
-        }
-        if (this._envCubeCamera) {
-            this._envCubeCamera = null;
-        }
-
-        // Dispose renderer
         if (this.renderer) {
             this.renderer.dispose();
             this.renderer = null;
         }
-
-        // Clear scene
         this.scene.clear();
-
-        // Dispose animation mixer
-        if (this.mixer) {
-            this.mixer.stopAllAction();
-            this.mixer = null;
-        }
-
-        // Clear clock
-        this.clock = null;
-
-        // Clear camera
+        this.keyLight = this.fillLight = this.rimLight = this.ambientLight = null;
         this.camera = null;
-
-        // Clear temp THREE objects
-        this._tempColor = null;
-        this._tempColor2 = null;
-        this._white = null;
-        this._tempQuat = null;
-        this._tempEuler = null;
-        this._quatX = null;
-        this._quatY = null;
-        this._quatZ = null;
-        this._rollQuat = null;
-        this._meshQuat = null;
-        this._xAxis = null;
-        this._yAxis = null;
-        this._zAxis = null;
-        this._cameraToMesh = null;
-        this._cameraDir = null;
+        this._cachedSoulMesh = null;
     }
 }

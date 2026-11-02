@@ -893,6 +893,9 @@ void main() {
     }
 
     gl_FragColor = vec4(finalColor, finalAlpha);
+    // Encode here: there is no post pass to tone-map and sRGB-encode (fix c).
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
 }
 `;
 
