@@ -168,11 +168,14 @@ export class EmotiveMascot3D {
         if (typeof window === 'undefined') {
             throw new Error('EmotiveMascot3D.init() requires a browser environment.');
         }
-        const testCanvas = document.createElement('canvas');
-        if (!testCanvas.getContext('webgl2')) {
+        const probeGl = document.createElement('canvas').getContext('webgl2');
+        if (!probeGl) {
             console.warn('[EmotiveMascot3D] WebGL2 is not supported in this browser');
             return this;
         }
+        // Release the probe context now; left alone it counts against the browser's live
+        // context cap until GC.
+        probeGl.getExtension('WEBGL_lose_context')?.loseContext();
 
         this.container = container;
         if (!container.style.position || container.style.position === 'static') {

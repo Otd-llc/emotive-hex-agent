@@ -14,14 +14,8 @@
         "node": ">=20.0.0"
     },
     "sideEffects": [
-        "src/3d/effects/ElementRegistrations.js",
-        "src/3d/effects/elements/*.js",
-        "src/core/gestures/elemental-gestures.js",
-        "src/core/gestures/elemental/*/register.js",
-        "**/ElementRegistrations.js",
-        "**/effects/elements/*.js",
-        "**/elemental-gestures.js",
-        "**/elemental/*/register.js"
+        "src/3d/effects/elements/electricity.js",
+        "src/core/gestures/elemental/electric/register-hex-agent.js"
     ],
     "scripts": {
         "build": "rollup -c",
@@ -53,16 +47,17 @@
         "jsdoc": "^4.0.4",
         "jsdoc-to-markdown": "^9.1.2",
         "jsdom": "^29.0.0",
+        "playwright-core": "^1.62.1",
         "prettier": "^3.6.2",
         "rollup": "^4.9.5",
         "rollup-plugin-analyzer": "^4.0.0",
         "rollup-plugin-bundle-size": "^1.0.3",
         "rollup-plugin-visualizer": "^7.0.1",
         "terser": "^5.46.1",
+        "three": "0.170.0",
         "typedoc": "^0.28.16",
         "typedoc-plugin-markdown": "^4.11.0",
-        "vitest": "^4.1.0",
-        "three": "0.170.0"
+        "vitest": "^4.1.0"
     },
     "main": "dist/emotive-hex-agent.js",
     "module": "dist/emotive-hex-agent.js",
