@@ -62,6 +62,18 @@ describe('Core3DManager teardown', () => {
         m.destroy();
     });
 
+    it('starts no new shader compile once destroy() was called (found by the teardown gate)', async () => {
+        const m = new Core3DManager(canvas(), { geometry: 'sphere', assetBasePath: '/x/' });
+        const gl = m.renderer.renderer;
+        const r = m.renderer;
+        const done = m.destroy();
+        // e.g. the electric pool finishes loading its GLBs after close and tries to link
+        await r.compileObjectAsync(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()));
+        expect(calls(gl, 'compileAsync')).toBe(0);
+        await done;
+        expect(calls(gl, 'forceContextLoss')).toBe(1);
+    });
+
     it('keeps materials alive while a compile is pending, then tears down', async () => {
         const m = new Core3DManager(canvas(), { geometry: 'sphere', assetBasePath: '/x/' });
         const gl = m.renderer.renderer;

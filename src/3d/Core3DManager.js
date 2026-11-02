@@ -2276,6 +2276,8 @@ export class Core3DManager {
         // Stop rendering now; keep every GL object alive until in-flight shader compiles
         // settle (three's compileAsync poller reads the material's program), then tear down.
         this._destroyed = true;
+        // No shader link may start after close (e.g. a pool whose GLBs land later).
+        this.renderer?.beginClose();
         const settled = this.renderer ? this.renderer.whenCompilesSettled() : Promise.resolve();
         this._destroyPromise = settled.then(() => this._teardown());
         return this._destroyPromise;

@@ -472,7 +472,7 @@ export class ThreeRenderer {
      * @returns {Promise<void>}
      */
     async compileObjectAsync(object) {
-        if (!object || !this.renderer || !this.camera || this._contextLost || this._destroyed) return;
+        if (!object || !this.renderer || !this.camera || this._contextLost || this._closing) return;
         const savedTarget = this.renderer.getRenderTarget();
         try {
             // Layer 0 renders straight to the canvas, so compile the canvas variant.
@@ -490,6 +490,14 @@ export class ThreeRenderer {
         } finally {
             if (!this._destroyed && this.renderer) this.renderer.setRenderTarget(savedTarget);
         }
+    }
+
+    /**
+     * Refuse new shader compiles from now on (teardown has begun). Compiles already in
+     * flight are still awaited by whenCompilesSettled().
+     */
+    beginClose() {
+        this._closing = true;
     }
 
     /** @private */
@@ -579,6 +587,7 @@ export class ThreeRenderer {
     destroy() {
         if (this._destroyPromise) return this._destroyPromise;
         this._destroyed = true;
+        this.beginClose();
         this._destroyPromise = this.whenCompilesSettled().then(() => this._disposeGL());
         return this._destroyPromise;
     }

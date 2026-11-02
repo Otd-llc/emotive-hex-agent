@@ -29,6 +29,7 @@ const probe = {
     timers: new Map(),     // id -> { kind, stack }
     rafs: new Map(),
     errors: [],
+    lateStacks: [],  // stacks of the first getProgramParameter calls after close
 };
 const engineStack = () => {
     const s = new Error().stack || '';
@@ -41,7 +42,10 @@ HTMLCanvasElement.prototype.getContext = function (type, attrs) {
         const rec = { gl, closed: false, callsAfterClose: 0, canvas: this };
         const orig = gl.getProgramParameter.bind(gl);
         gl.getProgramParameter = (...a) => {
-            if (rec.closed) rec.callsAfterClose++;
+            if (rec.closed) {
+                rec.callsAfterClose++;
+                if (probe.lateStacks.length < 3) probe.lateStacks.push((new Error().stack || '').split(String.fromCharCode(10)).slice(2, 8).join(' | '));
+            }
             return orig(...a);
         };
         probe.contexts.push(rec);
@@ -120,10 +124,14 @@ const H = {
         const m = H.mascot;
         H.mascot = null;
         if (!m) return Promise.resolve();
-        const recs = probe.contexts.filter(c => !c.closed);
+        // Only this mascot's context: earlier closes may still be settling.
+        const canvas = m.webglCanvas;
+        const recs = probe.contexts.filter(c => c.canvas === canvas);
         return m.destroy().then(() => { for (const r of recs) r.closed = true; });
     },
     fire(name) { H.mascot.express(name); },
+    /** shader links in flight on the current mascot */
+    pendingCompiles() { return H.mascot?.core3D?.renderer?.pendingCompileCount?.() ?? 0; },
     /** electric instances currently alive (arcs on screen) */
     arcs() { return H.mascot?.core3D?.elementSpawner?.activeElements?.size ?? 0; },
     /** resolve once the electric pool has linked (or reject after ms) */
