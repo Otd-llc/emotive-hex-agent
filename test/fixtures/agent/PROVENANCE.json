@@ -195,29 +195,8 @@
         "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
         "source": "generated, no third-party inputs"
     },
-    "crystal-star-trilling.glb": {
-        "generator": "tools/agent/blender/star.py shape=star-trilling",
-        "built_by": "tools/agent/build.mjs",
-        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
-        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
-        "source": "generated, no third-party inputs"
-    },
-    "crystal-star-penetration.glb": {
-        "generator": "tools/agent/blender/star.py shape=star-penetration",
-        "built_by": "tools/agent/build.mjs",
-        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
-        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
-        "source": "generated, no third-party inputs"
-    },
     "crystal-star-cross.glb": {
         "generator": "tools/agent/blender/star.py shape=star-cross",
-        "built_by": "tools/agent/build.mjs",
-        "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
-        "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",
-        "source": "generated, no third-party inputs"
-    },
-    "crystal-star-stellate.glb": {
-        "generator": "tools/agent/blender/star.py shape=star-stellate",
         "built_by": "tools/agent/build.mjs",
         "toolchain": "Blender 5.3.0 Beta 98f8f23151d3; @gltf-transform 4.5.1; sharp 0.35.5 (libwebp 1.6.0)",
         "licence": "MIT (emotive-hex-agent asset, One Thousand Drones LLC)",

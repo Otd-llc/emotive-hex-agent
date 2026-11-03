@@ -111,20 +111,8 @@
         "sha256": "ee8ca84f8a83aac324aa0b5f6ba44b423a7a2a48c5c9fa8804fbbdbda982c4f4",
         "bytes": 8524
     },
-    "crystal-star-trilling.glb": {
-        "sha256": "4e8e0306015e9b9feaebea9d72f6c50025ad5274778f1d7bca9d7f4ee9a162c4",
-        "bytes": 22548
-    },
-    "crystal-star-penetration.glb": {
-        "sha256": "d1fa48904d0a004b696e8bd6e2b1279fc57c78078a67cb13cd2b98a7767b738a",
-        "bytes": 22800
-    },
     "crystal-star-cross.glb": {
         "sha256": "01d0ba960bfbf0cc528a55493463c9ecd4542cb64fc81b17d9bd4f89ba5561fc",
         "bytes": 14860
-    },
-    "crystal-star-stellate.glb": {
-        "sha256": "bef2d1cd4f7aabd40eb1c929e9e2a701fd816e014da6b2bfd794bb4092a69ae2",
-        "bytes": 27380
     }
 }

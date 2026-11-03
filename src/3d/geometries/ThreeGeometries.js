@@ -173,22 +173,20 @@ function crystalShape(file, over = {}) {
 export const CRYSTAL_SHAPES = ['hexgem', 'twisted', 'trio', 'cluster', 'split', 'rosette'];
 
 /**
- * The VICTORY ("done") candidates, round star (owner, 2026-11-02: "Can we create a natural
- * star crystal in the style of our crystal?"). Natural star habits, every member made from 02
- * (the hexgem's own crystal; the agent-crystal sandbox's tools/agent/blender/star.py): A trilling (three at
- * 60 deg, six points), B penetration (three perpendicular, six points face-on), C cross (two
- * at 60 deg, four points), D stellate (six points growing out of a short hub). Registered so
- * the owner can pick live; the state table moves to the pick, the rest are then dropped.
- * Each carries `faceCamera` (no ambient spin, front to the camera); B also `faceSway`.
+ * The VICTORY ("done") shape (owner, 2026-11-02: "Can we create a natural star crystal in the
+ * style of our crystal?", then picked C live in the scene). star-cross is a staurolite-style
+ * cross twin: two 02 crystals (the hexgem's own crystal; the agent-crystal sandbox's
+ * tools/agent/blender/star.py) crossing at 60 deg, four points. The other three candidates
+ * (trilling, penetration, stellate) were dropped at the pick.
+ * A star carries `faceCamera` (no ambient spin, front to the camera: a flat star turned
+ * edge-on is a stick); `faceSway` stays available to rock a 3D star about that view.
  * A star spans its whole box in both directions, so its shell is smaller than the hexgem's
  * (STAR_SHELL, tuned on the gem coverage in the engine at rest, 2026-11-02): the same visual
  * mass as the hexgem, not the same bounding side.
  */
-export const STAR_SHAPES = ['star-trilling', 'star-penetration', 'star-cross', 'star-stellate'];
-const STAR_SHELL = { 'star-trilling': 1.85, 'star-penetration': 1.6, 'star-cross': 1.75, 'star-stellate': 1.85 };
-/** Every star faces the camera (a flat star turned edge-on is a stick, and B is a six-point
- *  star only down its diagonal); B, the 3D one, rocks +-0.15 rad about that view to show depth (more folds two of its points onto one line). */
-const STAR_SWAY = { 'star-penetration': 0.15 };
+export const STAR_SHAPES = ['star-cross'];
+const STAR_SHELL = { 'star-cross': 1.75 };
+const STAR_SWAY = {};
 
 /**
  * Core geometry registry.

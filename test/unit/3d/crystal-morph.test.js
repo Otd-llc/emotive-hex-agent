@@ -180,7 +180,7 @@ describe('a star faces the camera (faceCamera), the gem spins', () => {
             await morph(m, 'hexgem');
             expect(Math.abs(await spin(120)), `${star} > hexgem spins again`).toBeGreaterThan(0);
         }
-        expect(STAR_SHAPES.filter(s => THREE_GEOMETRIES[s].faceSway)).toEqual(['star-penetration']);
+        expect(STAR_SHAPES.filter(s => THREE_GEOMETRIES[s].faceSway)).toEqual([]);
         for (const s of CRYSTAL_SHAPES) expect(THREE_GEOMETRIES[s].faceCamera, s).toBe(false);
         await m.destroy();
     }, 60000);

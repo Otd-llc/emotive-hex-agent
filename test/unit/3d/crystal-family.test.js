@@ -19,10 +19,7 @@ const SHAPES = {
 };
 // Round star: the victory candidates (made from 02), registered for the owner's live pick.
 const STARS = {
-    'star-trilling': 'crystal-star-trilling.glb',
-    'star-penetration': 'crystal-star-penetration.glb',
     'star-cross': 'crystal-star-cross.glb',
-    'star-stellate': 'crystal-star-stellate.glb',
 };
 const ALL = { ...SHAPES, ...STARS };
 
@@ -117,14 +114,14 @@ describe('loadCrystalGeometry caches per URL and hands out clones', () => {
     });
 });
 
-describe('registry: the six picked shapes and the four star candidates, flagged crystalFamily', () => {
+describe('registry: the six picked shapes and the victory star, flagged crystalFamily', () => {
     it('registers exactly the picked crystal shapes (plus the sphere fallback)', () => {
         expect(Object.keys(THREE_GEOMETRIES).sort()).toEqual([...Object.keys(ALL), 'sphere'].sort());
         expect(CRYSTAL_SHAPES).toEqual(Object.keys(SHAPES));
         expect(STAR_SHAPES).toEqual(Object.keys(STARS));
     });
 
-    it('the star candidates are not in the picked morph set (preloaded) until one is picked', () => {
+    it('the victory star is registered outside the preloaded morph set (loaded on first use)', () => {
         for (const n of STAR_SHAPES) expect(CRYSTAL_SHAPES).not.toContain(n);
     });
 

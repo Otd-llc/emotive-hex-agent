@@ -28,8 +28,8 @@ const KEEP = [
 ];
 // The picked morph set (D7), base first.
 const SHAPES = ['hexgem', 'twisted', 'trio', 'cluster', 'split', 'rosette'];
-// Round star: the victory candidates (registered, not yet in the picked set).
-const STARS = ['star-trilling', 'star-penetration', 'star-cross', 'star-stellate'];
+// The victory star (owner pick, 2026-11-02): star-cross.
+const STARS = ['star-cross'];
 // Per-shape floors (mean |delta L*| in the central gem window). split has a gap down its
 // centre, so its window holds less gem: measured 2.7 dark at P2a; floor 2.0 on dark.
 const SHAPE_FLOOR = { split: { dark: 2.0 } };
