@@ -155,14 +155,40 @@ const H = {
     /** electric instances currently alive (arcs on screen) */
     arcs() { return H.mascot?.core3D?.elementSpawner?.activeElements?.size ?? 0; },
     /** resolve once the electric pool has linked (or reject after ms) */
-    /** resolve once the electric pool (linked at mount) is ready; returns ms since mount */
-    async electricReady(ms = 30000) {
+    /**
+     * resolve once the electric pool (linked at mount) is ready; returns ms since mount. A wait,
+     * not a bound: a cold profile's link under CPU load measured 28 s (2026-11-02), so 90 s.
+     */
+    async electricReady(ms = 90000) {
         const t0 = performance.now();
         while (!H.mascot?.core3D?.elementSpawner?.pools?.get('electricity')?.mesh) {
             if (performance.now() - t0 > ms) throw new Error('electric pool not ready after ' + ms + ' ms');
             await sleep(25);
         }
         return Math.round(performance.now() - H.mountedAt);
+    },
+    /**
+     * Resolve once every gesture has finished and the gem is back at rest: no live animation in
+     * the animator and the core at its origin for `frames` frames running. A gesture's length runs
+     * on the animator's clock, not the wall clock, so a fixed sleep after a burst of gestures can
+     * land on the tail of a long one (the gem still swung off the centre). Returns { ms, settled,
+     * live } where live names what was still playing if it timed out (the caller fails on it).
+     */
+    async gesturesSettled(ms = 20000, frames = 10) {
+        const t0 = performance.now();
+        let calm = 0;
+        let live = [];
+        while (performance.now() - t0 < ms) {
+            const c = H.mascot?.core3D;
+            const anims = c?.animator?.animations ?? [];
+            const p = c?.renderer?.coreMesh?.position;
+            live = anims.map(a => a.gestureName ?? '?');
+            const home = !p || Math.hypot(p.x, p.y, p.z) < 1e-3;
+            calm = anims.length === 0 && home ? calm + 1 : 0;
+            if (calm >= frames) return { ms: Math.round(performance.now() - t0), settled: true, live: [] };
+            await nextFrames(1);
+        }
+        return { ms: Math.round(performance.now() - t0), settled: false, live };
     },
     /** fire a gesture and sample arcs for ms; returns the max instance count seen */
     async fireAndWatch(name, ms) {

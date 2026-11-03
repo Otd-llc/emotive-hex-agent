@@ -76,8 +76,13 @@ await runGate('states', { plant }, async ({ open }) => {
     );
     const badCalls = calls.filter(c => !c.ok).map(c => c.call);
 
-    // Let gestures finish, then measure the resting gem on both surfaces.
-    await page.evaluate(() => H.sleep(2500));
+    // Let gestures finish, then measure the resting gem on both surfaces. NOT a fixed sleep: the
+    // last of the 26 gestures can still be playing 2.5 s after it fired (they run on the
+    // animator's clock), and a reading on the tail of one measured the field beside a gem swung
+    // off the centre window (the states-gate flake, 2026-11-02: dark 0.67, coverage 0.02). The
+    // gem must be at rest first; a gem that never settles fails the gate.
+    const rest = await page.evaluate(() => H.gesturesSettled());
+    await page.evaluate(() => H.sleep(300));
     const measure = async field => {
         const r = await page.evaluate(() => H.stageRect());
         const w = r.w * GEM_FRAC;
@@ -155,6 +160,7 @@ await runGate('states', { plant }, async ({ open }) => {
         allGesturesAvailable: missing.length === 0,
         allCallsEmitted: badCalls.length === 0,
         noWarningsOrErrors: warnings.length === 0 && pageErrors.length === 0,
+        gemAtRestBeforeMeasure: rest.settled,
         darkSurfaceVisible: dark.meanAbsDLstar >= FLOOR.dark,
         lightSurfaceVisible: light.meanAbsDLstar >= FLOOR.light,
         morphsToAndFromEveryShape: starMorphs === 2 * (SHAPES.length - 1) && morphs.slice(0, starMorphs).every(m => m.ok),
@@ -175,6 +181,7 @@ await runGate('states', { plant }, async ({ open }) => {
             morphs,
             emotionLegs,
             floors: FLOOR,
+            rest,
             dark: { meanAbsDLstar: +dark.meanAbsDLstar.toFixed(2), meanAbsDL: +dark.meanAbsDL.toFixed(4), coverage: +dark.coverage.toFixed(3), centreMaxDL: +dark.centreMaxDL.toFixed(4) },
             light: { meanAbsDLstar: +light.meanAbsDLstar.toFixed(2), meanAbsDL: +light.meanAbsDL.toFixed(4), coverage: +light.coverage.toFixed(3), centreMaxDL: +light.centreMaxDL.toFixed(4) },
         },
