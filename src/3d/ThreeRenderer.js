@@ -17,6 +17,13 @@ import { PARTICLE_STAGE_EXP } from './particles/Particle3DRenderer.js';
 
 // Link-completion poll interval (three's compileAsync uses the same).
 const LINK_POLL_MS = 10;
+/**
+ * The link poller's timer. A shader link is real work on the GPU process, so a host that runs the
+ * page on a VIRTUAL clock (a frame-exact film renderer: the page's setTimeout only fires when the
+ * renderer ticks) can hand the poller a wall-clock timer as `globalThis.__engineWallTimers`
+ * ({ setTimeout, clearTimeout }) and hold its clock until the link lands. Unset, the page's own.
+ */
+const pollTimers = () => globalThis.__engineWallTimers ?? globalThis;
 // Safety cap for whenCompilesSettled(); pollers stop at beginClose(), so it is never reached.
 const COMPILE_TIMEOUT_MS = 20000;
 
@@ -593,7 +600,7 @@ export class ThreeRenderer {
         const poll = { timer: null, finish: null };
         const raw = new Promise(resolve => {
             poll.finish = ok => {
-                clearTimeout(poll.timer);
+                pollTimers().clearTimeout(poll.timer);
                 this._pollers.delete(poll);
                 resolve(ok);
             };
@@ -604,7 +611,7 @@ export class ThreeRenderer {
                     if (!program || program.isReady()) materials.delete(m);
                 }
                 if (materials.size === 0) return poll.finish(true);
-                poll.timer = setTimeout(check, LINK_POLL_MS);
+                poll.timer = pollTimers().setTimeout(check, LINK_POLL_MS);
             };
             this._pollers.add(poll);
             check();
