@@ -501,11 +501,16 @@ export class EmotiveMascot3D {
         if (!this._elementPoolReady()) return;
         this._queuedGesture = null;
         const gesture = getGesture(q.name);
-        if (gesture) this._playNow(q.name, gesture);
+        if (gesture) this._playNow(q.name, gesture, Math.max(0, clockNow() - q.at));
     }
 
-    /** @private */
-    _playNow(gestureName, gesture) {
+    /**
+     * @private
+     * @param {number} [heldMs] - how long it was held for the pool (0 = played at once). The
+     *   `gesture:trigger` payload carries it, so a host can re-sync what belongs to the moment
+     *   (the refusal's slow ruby) with a shock that plays late.
+     */
+    _playNow(gestureName, gesture, heldMs = 0) {
         if (this.core3D) this.core3D.playGesture(gestureName);
 
         const duration = gesture.config?.duration || 800;
@@ -516,7 +521,7 @@ export class EmotiveMascot3D {
         }, duration);
         this.gestureTimeouts.push(timeoutId);
 
-        this.eventManager.emit('gesture:trigger', { gesture: gestureName });
+        this.eventManager.emit('gesture:trigger', { gesture: gestureName, held: heldMs });
     }
 
     /** Alias of express. */

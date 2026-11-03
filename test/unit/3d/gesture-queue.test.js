@@ -54,7 +54,26 @@ describe('element gesture queue', () => {
         await m.destroy();
     });
 
-    it('the latest held gesture wins', async () => {
+    it('gesture:trigger says how long a held gesture waited (0 when it played at once)', async () => {
+        const m = await mascot();
+        vi.spyOn(m.core3D, 'playGesture').mockImplementation(() => {});
+        const ev = [];
+        m.on('gesture:trigger', d => ev.push([d.gesture, d.held]));
+        const t0 = performance.now();
+        m.express('shock');
+        vi.spyOn(performance, 'now').mockReturnValue(t0 + 9000);
+        ready(m);
+        m._drainGestureQueue();
+        expect(ev.length).toBe(1);
+        expect(ev[0][0]).toBe('shock');
+        expect(ev[0][1]).toBeGreaterThan(8990);
+        m.express('shock');
+        expect(ev[1]).toEqual(['shock', 0]);
+        m.core3D.elementSpawner.pools.delete('electricity');
+        await m.destroy();
+    });
+
+        it('the latest held gesture wins', async () => {
         const m = await mascot();
         const play = vi.spyOn(m.core3D, 'playGesture').mockImplementation(() => {});
         m.express('shock');
