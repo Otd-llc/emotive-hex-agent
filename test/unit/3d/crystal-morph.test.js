@@ -12,7 +12,7 @@ vi.mock('three', async importOriginal => {
 });
 
 const { Core3DManager } = await import('../../../src/3d/Core3DManager.js');
-const { THREE_GEOMETRIES, CRYSTAL_SHAPES } = await import('../../../src/3d/geometries/ThreeGeometries.js');
+const { THREE_GEOMETRIES, CRYSTAL_SHAPES, STAR_SHAPES } = await import('../../../src/3d/geometries/ThreeGeometries.js');
 
 const canvas = () => Object.assign(document.createElement('canvas'), { width: 300, height: 200 });
 const DEG = Math.PI / 180;
@@ -90,6 +90,98 @@ describe('morphTo between every pair of picked shapes', () => {
         }
         expect(disposed).not.toHaveBeenCalled();
         expect(seen.size).toBe(30);
+        await m.destroy();
+    }, 60000);
+});
+
+describe('morphTo between every star candidate and hexgem / split', () => {
+    it('both ways with hexgem and with split: crystal shader, soul, entry values, full size, glow kept', async () => {
+        const m = await mount('hexgem');
+        const material = m.customMaterial;
+        const soul = m.crystalSoul;
+        const disposed = vi.fn();
+        material.addEventListener('dispose', disposed);
+        const glow = material.uniforms.uGlow.value;
+        // the resting mesh scale per unit of shell scale, on the hexgem (breathing moves it a little)
+        for (let i = 0; i < 30; i++) m.render(16);
+        const rest = m.coreMesh.scale.x / THREE_GEOMETRIES.hexgem.shellScale;
+        const seen = new Set();
+        let at = 'hexgem';
+        for (const star of STAR_SHAPES) {
+            for (const [a, b] of [
+                ['hexgem', star],
+                [star, 'hexgem'],
+                ['split', star],
+                [star, 'split'],
+            ]) {
+                if (at !== a) await morph(m, a);
+                await morph(m, b);
+                at = b;
+                seen.add(`${a}>${b}`);
+                expect(m.geometryType, `${a}>${b}`).toBe(b);
+                expect(m.customMaterialType, `${a}>${b} shader`).toBe('crystal');
+                expect(m.coreMesh.material, `${a}>${b} material on mesh`).toBe(material);
+                expect(m.crystalSoul, `${a}>${b} same soul`).toBe(soul);
+                expect(m.crystalShellBaseScale).toBe(THREE_GEOMETRIES[b].shellScale);
+                expect(m.crystalSoul.baseScale).toBe(THREE_GEOMETRIES[b].soulScale);
+                // not left dark or shrunk: the morph has fully landed, the mesh is drawn at
+                // its full size, the glow is what it was
+                expect(m.isMorphing(), `${a}>${b} landed`).toBe(false);
+                expect(m.coreMesh.visible, `${a}>${b} visible`).toBe(true);
+                const k = m.coreMesh.scale.x / THREE_GEOMETRIES[b].shellScale / rest;
+                expect(k, `${a}>${b} full size`).toBeGreaterThan(0.85);
+                expect(k, `${a}>${b} full size`).toBeLessThan(1.15);
+                expect(material.uniforms.uGlow.value, `${a}>${b} glow`).toBe(glow);
+                const n = m.coreMesh.geometry.attributes.position.count;
+                expect(n, `${a}>${b} geometry`).toBeGreaterThan(0);
+            }
+        }
+        expect(seen.size).toBe(STAR_SHAPES.length * 4);
+        expect(disposed).not.toHaveBeenCalled();
+        await m.destroy();
+    }, 60000);
+});
+
+describe('a star faces the camera (faceCamera), the gem spins', () => {
+    it('A, C, D hold yaw on the camera through emotion changes; B rocks about it; hexgem turns', async () => {
+        const m = await mount('hexgem');
+        const spin = async frames => {
+            const y0 = m.baseEuler[1];
+            for (let i = 0; i < frames; i++) m.render(16);
+            return m.baseEuler[1] - y0;
+        };
+        expect(Math.abs(await spin(60))).toBeGreaterThan(0);
+        for (const star of STAR_SHAPES) {
+            await morph(m, star);
+            const sway = THREE_GEOMETRIES[star].faceSway;
+            expect(THREE_GEOMETRIES[star].faceCamera).toBe(true);
+            const cam = m.renderer.camera.position;
+            const toCam = Math.atan2(cam.x, cam.z);
+            if (!sway) {
+                expect(m.baseEuler[1]).toBeCloseTo(toCam, 6);
+                expect(await spin(120)).toBeCloseTo(0, 6);
+                m.setEmotion('euphoria');
+                expect(await spin(120)).toBeCloseTo(0, 6);
+                expect(m.baseEuler[0]).toBe(0);
+                expect(m.baseEuler[2]).toBe(0);
+            } else {
+                // rocks within +-sway of the camera direction, never round
+                let lo = Infinity;
+                let hi = -Infinity;
+                for (let i = 0; i < 500; i++) {
+                    m.render(16);
+                    lo = Math.min(lo, m.baseEuler[1] - toCam);
+                    hi = Math.max(hi, m.baseEuler[1] - toCam);
+                }
+                expect(hi).toBeLessThanOrEqual(sway + 1e-9);
+                expect(lo).toBeGreaterThanOrEqual(-sway - 1e-9);
+                expect(hi - lo).toBeGreaterThan(sway);
+            }
+            await morph(m, 'hexgem');
+            expect(Math.abs(await spin(120)), `${star} > hexgem spins again`).toBeGreaterThan(0);
+        }
+        expect(STAR_SHAPES.filter(s => THREE_GEOMETRIES[s].faceSway)).toEqual(['star-penetration']);
+        for (const s of CRYSTAL_SHAPES) expect(THREE_GEOMETRIES[s].faceCamera, s).toBe(false);
         await m.destroy();
     }, 60000);
 });

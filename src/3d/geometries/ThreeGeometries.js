@@ -155,6 +155,9 @@ function crystalShape(file, over = {}) {
         soulScale: over.soulScale ?? CRYSTAL_FAMILY_DEFAULTS.soulScale,
         shellScale: over.shellScale ?? CRYSTAL_FAMILY_DEFAULTS.shellScale,
         calibration: { ...CRYSTAL_FAMILY_DEFAULTS.calibration, ...(over.calibration || {}) },
+        // A flat shape keeps its face to the camera instead of spinning edge-on.
+        faceCamera: over.faceCamera === true,
+        faceSway: over.faceSway ?? 0,
         blink: {
             type: 'facet-flash',
             duration: 160,
@@ -168,6 +171,24 @@ function crystalShape(file, over = {}) {
 
 /** The picked morph set (D7), base first. */
 export const CRYSTAL_SHAPES = ['hexgem', 'twisted', 'trio', 'cluster', 'split', 'rosette'];
+
+/**
+ * The VICTORY ("done") candidates, round star (owner, 2026-11-02: "Can we create a natural
+ * star crystal in the style of our crystal?"). Natural star habits, every member made from 02
+ * (the hexgem's own crystal; the agent-crystal sandbox's tools/agent/blender/star.py): A trilling (three at
+ * 60 deg, six points), B penetration (three perpendicular, six points face-on), C cross (two
+ * at 60 deg, four points), D stellate (six points growing out of a short hub). Registered so
+ * the owner can pick live; the state table moves to the pick, the rest are then dropped.
+ * Each carries `faceCamera` (no ambient spin, front to the camera); B also `faceSway`.
+ * A star spans its whole box in both directions, so its shell is smaller than the hexgem's
+ * (STAR_SHELL, tuned on the gem coverage in the engine at rest, 2026-11-02): the same visual
+ * mass as the hexgem, not the same bounding side.
+ */
+export const STAR_SHAPES = ['star-trilling', 'star-penetration', 'star-cross', 'star-stellate'];
+const STAR_SHELL = { 'star-trilling': 1.85, 'star-penetration': 1.6, 'star-cross': 1.75, 'star-stellate': 1.85 };
+/** Every star faces the camera (a flat star turned edge-on is a stick, and B is a six-point
+ *  star only down its diagonal); B, the 3D one, rocks +-0.15 rad about that view to show depth (more folds two of its points onto one line). */
+const STAR_SWAY = { 'star-penetration': 0.15 };
 
 /**
  * Core geometry registry.
@@ -194,6 +215,7 @@ export const THREE_GEOMETRIES = {
     cluster: crystalShape('crystal-dt-cluster.glb'),
     split: crystalShape('crystal-dt-split.glb'),
     rosette: crystalShape('crystal-dt-rosette.glb'),
+    ...Object.fromEntries(STAR_SHAPES.map(n => [n, crystalShape(`crystal-${n}.glb`, { shellScale: STAR_SHELL[n], faceCamera: true, faceSway: STAR_SWAY[n] ?? 0 })])),
 };
 
 /** @param {string} name @returns {boolean} */

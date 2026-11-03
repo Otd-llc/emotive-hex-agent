@@ -25,6 +25,9 @@ const DEFAULT_RIGHTING_CONFIG = {
     axes: { pitch: true, roll: true, yaw: false },
 };
 
+/** Period of the faceSway yaw rock (ms). */
+const FACE_SWAY_MS = 7000;
+
 export class BehaviorController {
     /**
      * Create behavior controller
@@ -63,10 +66,23 @@ export class BehaviorController {
      * @param {Object} options.geometryRotation - Geometry-specific base rotation config (e.g., SUN_ROTATION_CONFIG)
      */
     configureForEmotion(options = {}) {
-        const { geometryType, emotionData, facingConfig, geometryRotation } = options;
+        const { geometryType, emotionData, facingConfig, geometryRotation, faceCamera, faceSway } =
+            options;
 
         // Track current geometry type
         this.geometryType = geometryType;
+
+        // A flat shape (a registry entry with `faceCamera`, e.g. a planar star crystal) never
+        // spins edge-on: no ambient rotation, its front turned to the camera every frame.
+        // `faceSway` (rad): a slow yaw rock about the camera direction, so a 3D shape that
+        // faces the camera still shows its depth.
+        this.faceCamera = faceCamera === true;
+        this.faceSway = this.faceCamera && faceSway > 0 ? faceSway : 0;
+        if (this.faceCamera) {
+            this._disposeFacingBehavior();
+            this._disableRotation();
+            return;
+        }
 
         // Moon is tidally locked - no rotation
         if (geometryType === 'moon') {
@@ -120,6 +136,18 @@ export class BehaviorController {
      * @param {Array} baseEuler - Base euler rotation array [x, y, z] to modify
      */
     update(deltaTime, baseEuler) {
+        // Face the camera (yaw only, upright): with a host camera (syncCamera) the camera sits
+        // round the gem at the origin, so this follows the scene camera too. The yaw snaps;
+        // a morph sets the flag at its swap, where the gem is at its smallest.
+        if (this.faceCamera) {
+            const c = this.camera?.position;
+            baseEuler[0] = 0;
+            this._faceT = ((this._faceT || 0) + deltaTime) % FACE_SWAY_MS;
+            const rock = this.faceSway * Math.sin((2 * Math.PI * this._faceT) / FACE_SWAY_MS);
+            baseEuler[1] = (c && (c.x !== 0 || c.z !== 0) ? Math.atan2(c.x, c.z) : 0) + rock;
+            baseEuler[2] = 0;
+            return;
+        }
         // Update rotation behavior
         if (this.rotationBehavior) {
             this.rotationBehavior.update(deltaTime, baseEuler);
@@ -207,7 +235,14 @@ export class BehaviorController {
      * @param {Object} options.geometryRotation - Geometry-specific rotation config
      */
     configureForMorph(options = {}) {
-        const { targetGeometryType, emotionData, facingConfig, geometryRotation } = options;
+        const {
+            targetGeometryType,
+            emotionData,
+            facingConfig,
+            geometryRotation,
+            faceCamera,
+            faceSway,
+        } = options;
 
         // Reset righting behavior during morph transition
         this.resetRighting();
@@ -218,6 +253,8 @@ export class BehaviorController {
             emotionData,
             facingConfig,
             geometryRotation,
+            faceCamera,
+            faceSway,
         });
     }
 

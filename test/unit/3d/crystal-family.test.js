@@ -5,7 +5,7 @@ import { fixtureBuffer, fetchFixture } from '../../helpers/fixtureFetch.js';
 
 // P2a items 1 + 2: GLB geometry loader (node transforms applied, flat facets kept) and a
 // per-geometry crystalFamily flag instead of name checks.
-const { THREE_GEOMETRIES, CRYSTAL_SHAPES, geometryFromScene, parseCrystalGLB, loadCrystalGeometry } =
+const { THREE_GEOMETRIES, CRYSTAL_SHAPES, STAR_SHAPES, geometryFromScene, parseCrystalGLB, loadCrystalGeometry } =
     await import('../../../src/3d/geometries/ThreeGeometries.js');
 const { createCustomMaterial } = await import('../../../src/3d/utils/MaterialFactory.js');
 
@@ -17,6 +17,14 @@ const SHAPES = {
     split: 'crystal-dt-split.glb',
     rosette: 'crystal-dt-rosette.glb',
 };
+// Round star: the victory candidates (made from 02), registered for the owner's live pick.
+const STARS = {
+    'star-trilling': 'crystal-star-trilling.glb',
+    'star-penetration': 'crystal-star-penetration.glb',
+    'star-cross': 'crystal-star-cross.glb',
+    'star-stellate': 'crystal-star-stellate.glb',
+};
+const ALL = { ...SHAPES, ...STARS };
 
 const size = g => {
     g.computeBoundingBox();
@@ -54,7 +62,7 @@ describe('geometryFromScene applies node transforms before caching', () => {
 });
 
 describe('parseCrystalGLB (real fixtures)', () => {
-    for (const [name, file] of Object.entries(SHAPES)) {
+    for (const [name, file] of Object.entries(ALL)) {
         it(`${name}: centred, max dimension 1.6, position + normal + uv, flat facets`, async () => {
             const g = await parseCrystalGLB(fixtureBuffer(file));
             expect(g.attributes.position).toBeTruthy();
@@ -109,24 +117,51 @@ describe('loadCrystalGeometry caches per URL and hands out clones', () => {
     });
 });
 
-describe('registry: the six picked shapes, flagged crystalFamily', () => {
+describe('registry: the six picked shapes and the four star candidates, flagged crystalFamily', () => {
     it('registers exactly the picked crystal shapes (plus the sphere fallback)', () => {
-        expect(Object.keys(THREE_GEOMETRIES).sort()).toEqual([...Object.keys(SHAPES), 'sphere'].sort());
+        expect(Object.keys(THREE_GEOMETRIES).sort()).toEqual([...Object.keys(ALL), 'sphere'].sort());
         expect(CRYSTAL_SHAPES).toEqual(Object.keys(SHAPES));
+        expect(STAR_SHAPES).toEqual(Object.keys(STARS));
     });
+
+    it('the star candidates are not in the picked morph set (preloaded) until one is picked', () => {
+        for (const n of STAR_SHAPES) expect(CRYSTAL_SHAPES).not.toContain(n);
+    });
+
+    it('a star shell is smaller than the hexgem shell (its box is full both ways)', () => {
+        for (const n of STAR_SHAPES) {
+            expect(THREE_GEOMETRIES[n].shellScale).toBeLessThan(THREE_GEOMETRIES.hexgem.shellScale);
+            expect(THREE_GEOMETRIES[n].shellScale).toBeGreaterThan(1.4);
+        }
+    });
+
+    for (const name of STAR_SHAPES) {
+        it(`${name}: within the gem tri budget and wider than the hexgem (a star, not a point)`, async () => {
+            const g = await parseCrystalGLB(fixtureBuffer(STARS[name]));
+            const tris = g.index ? g.index.count / 3 : g.attributes.position.count / 3;
+            expect(tris).toBeGreaterThanOrEqual(60);
+            expect(tris).toBeLessThanOrEqual(500);
+            const s = size(g);
+            const hex = size(await parseCrystalGLB(fixtureBuffer(SHAPES.hexgem)));
+            // face-on (x, y): the hexgem is a tall point (0.65); a star fills both ways (the
+            // cross is an X a little taller than wide)
+            expect(Math.min(s.x, s.y) / Math.max(s.x, s.y)).toBeGreaterThan(0.6);
+            expect(Math.min(s.x, s.y)).toBeGreaterThan(hex.x * 1.2);
+        });
+    }
 
     it('the stock crystal path and the rough/heart/star loaders are gone', () => {
         for (const old of ['crystal', 'rough', 'heart', 'star']) expect(THREE_GEOMETRIES[old]).toBeUndefined();
     });
 
-    for (const name of Object.keys(SHAPES)) {
+    for (const name of Object.keys(ALL)) {
         it(`${name} carries crystalFamily + soulScale + shellScale + calibration`, () => {
             const c = THREE_GEOMETRIES[name];
             expect(c.crystalFamily).toBe(true);
             expect(typeof c.soulScale).toBe('number');
             expect(typeof c.shellScale).toBe('number');
             expect(c.calibration).toEqual({ x: expect.any(Number), y: expect.any(Number), z: expect.any(Number) });
-            expect(c.file).toBe(SHAPES[name]);
+            expect(c.file).toBe(ALL[name]);
             expect(typeof c.geometryLoader).toBe('function');
         });
     }
@@ -137,7 +172,7 @@ describe('registry: the six picked shapes, flagged crystalFamily', () => {
 });
 
 describe('material factory branches on the flag, not the name', () => {
-    for (const name of Object.keys(SHAPES)) {
+    for (const name of Object.keys(ALL)) {
         it(`${name} gets the crystal shader with the hexgem detail map`, () => {
             const r = createCustomMaterial(name, THREE_GEOMETRIES[name], { assetBasePath: '/agent' });
             expect(r?.type).toBe('crystal');

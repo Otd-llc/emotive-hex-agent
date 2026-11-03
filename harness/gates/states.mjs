@@ -8,6 +8,8 @@
  *    on BOTH surfaces, so a dark gem that still moves FAILS;
  *  - morphing to and from every picked shape keeps the crystal family (flag + crystal shader),
  *    the soul, and the luminance floor on both surfaces for each shape;
+ *  - STAR LEGS (round star, the victory candidates): each star from hexgem and back, and from
+ *    split and back, under the same checks, so no star morph leaves the gem dark;
  *  - EMOTION LEGS: every emotion the engine keeps (getAvailableEmotions) drives the core, and
  *    the gem stays above the same luminance floor on both surfaces in each one, so no emotion
  *    colour may darken the gem.
@@ -26,6 +28,8 @@ const KEEP = [
 ];
 // The picked morph set (D7), base first.
 const SHAPES = ['hexgem', 'twisted', 'trio', 'cluster', 'split', 'rosette'];
+// Round star: the victory candidates (registered, not yet in the picked set).
+const STARS = ['star-trilling', 'star-penetration', 'star-cross', 'star-stellate'];
 // Per-shape floors (mean |delta L*| in the central gem window). split has a gap down its
 // centre, so its window holds less gem: measured 2.7 dark at P2a; floor 2.0 on dark.
 const SHAPE_FLOOR = { split: { dark: 2.0 } };
@@ -128,6 +132,16 @@ await runGate('states', { plant }, async ({ open }) => {
         await visit(shape); // hexgem -> shape
         await visit(SHAPES[0]); // shape -> hexgem
     }
+    const starMorphs = morphs.length;
+    for (const star of STARS) {
+        await visit(star); // hexgem -> star
+        await visit('hexgem'); // star -> hexgem
+        await visit('split');
+        await visit(star); // split -> star
+        await visit('split'); // star -> split
+        await visit('hexgem');
+    }
+    const starLegs = morphs.slice(starMorphs);
     const linesBeforeClose = consoleLines.length;
     await page.evaluate(() => H.close());
 
@@ -143,7 +157,8 @@ await runGate('states', { plant }, async ({ open }) => {
         noWarningsOrErrors: warnings.length === 0 && pageErrors.length === 0,
         darkSurfaceVisible: dark.meanAbsDLstar >= FLOOR.dark,
         lightSurfaceVisible: light.meanAbsDLstar >= FLOOR.light,
-        morphsToAndFromEveryShape: morphs.length === 2 * (SHAPES.length - 1) && morphs.every(m => m.ok),
+        morphsToAndFromEveryShape: starMorphs === 2 * (SHAPES.length - 1) && morphs.slice(0, starMorphs).every(m => m.ok),
+        starsToAndFromHexgemAndSplit: starLegs.length === 6 * STARS.length && starLegs.every(m => m.ok),
         everyEmotionVisible: emotionLegs.length >= 15 && emotionLegs.every(l => l.ok),
     };
     await page.close();

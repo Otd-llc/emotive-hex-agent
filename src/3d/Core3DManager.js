@@ -488,6 +488,8 @@ export class Core3DManager {
             emotionData,
             facingConfig,
             geometryRotation,
+            faceCamera: this.geometryConfig?.faceCamera === true,
+            faceSway: this.geometryConfig?.faceSway ?? 0,
         });
 
         // Reset Euler angles to upright [pitch=0, yaw=current, roll=0]
@@ -1225,6 +1227,8 @@ export class Core3DManager {
                 emotionData,
                 facingConfig,
                 geometryRotation: null, // No geometry-specific rotation during morph
+                faceCamera: this._targetGeometryConfig?.faceCamera === true,
+                faceSway: this._targetGeometryConfig?.faceSway ?? 0,
             });
 
 
