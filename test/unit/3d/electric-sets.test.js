@@ -43,6 +43,16 @@ describe('electric sets', () => {
         }
     });
 
+    it('corona reads at in-scene size (round 7): a lit tube, bigger, brighter and more arcs', () => {
+        const c = ELECTRIC_SET_TUNE.corona;
+        expect(c.fill).toBeGreaterThan(0.45);
+        expect(c.surfaceScale).toBeGreaterThan(1.25);
+        expect(c.gain).toBeGreaterThan(1);
+        expect(c.countScale).toBeGreaterThan(1);
+        // gain never reaches 3x: the shader caps colour at 2.5 and opacity at 0.95 anyway.
+        expect(c.gain).toBeLessThan(3);
+    });
+
     for (const set of ELECTRIC_SETS) {
         it(`${set}: the pool loads that set's five files and keys them by role`, async () => {
             fetchFixture.urls = [];
@@ -69,6 +79,8 @@ describe('electric sets', () => {
             const mat = m.elementSpawner.materials.get('electricity');
             expect(mat.uniforms.uFill.value).toBe(ELECTRIC_SET_TUNE[set].fill);
             expect(m.elementSpawner.tune.electricity.surfaceScale).toBe(ELECTRIC_SET_TUNE[set].surfaceScale);
+            // Round 7: its gain on the material (1 when the set has none).
+            expect(mat.uniforms.uGain.value).toBe(ELECTRIC_SET_TUNE[set].gain ?? 1);
             await flush(10);
             await m.destroy();
         });

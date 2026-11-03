@@ -124,9 +124,10 @@ export class ElementInstancedSpawner {
      * @param {Object} [options.renderer] - ThreeRenderer for refraction mesh registration
      * @param {Object<string,string>} [options.modelPrefix] - per element type, a file-name prefix
      *   (an electric set: 'filament-'); the model keeps its role name
-     * @param {Object<string,{fill?:number,surfaceScale?:number}>} [options.tune] - per element
-     *   type: `fill` set on its pool material once made, `surfaceScale` multiplying the size of
-     *   surface-spawned elements (an electric set's tune)
+     * @param {Object<string,{fill?:number,surfaceScale?:number,gain?:number,countScale?:number}>} [options.tune]
+     *   - per element type: `fill` and `gain` set on its pool material once made, `surfaceScale`
+     *   multiplying the size and `countScale` the number of surface-spawned elements (an
+     *   electric set's tune)
      */
     constructor(options = {}) {
         const {
@@ -365,6 +366,7 @@ export class ElementInstancedSpawner {
         const material = config.createMaterial();
         const tune = this.tune[elementType];
         if (tune && Number.isFinite(tune.fill) && material?.uniforms?.uFill) material.uniforms.uFill.value = tune.fill;
+        if (tune && Number.isFinite(tune.gain) && material?.uniforms?.uGain) material.uniforms.uGain.value = tune.gain;
         this.materials.set(elementType, material);
 
         // Store original depthWrite so it can be restored between gestures
@@ -1938,8 +1940,9 @@ export class ElementInstancedSpawner {
             surfaceConfig.models.length > 0
                 ? surfaceConfig.models
                 : models || Array.from(merged.modelMap.keys());
+        const countScale = this.tune[elementType]?.countScale || 1;
         const actualCount = Math.min(
-            surfaceConfig.countOverride || count,
+            Math.round((surfaceConfig.countOverride || count) * countScale),
             pool.availableSlots,
             surfacePoints.length
         );

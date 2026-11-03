@@ -378,6 +378,7 @@ void main() {
 const FRAGMENT_SHADER = /* glsl */ `
 uniform float uInk;          // 1 = light page: draw arcs as dark ink, not light
 uniform float uFill;         // electric set: the tube itself lit at least this much (0 = bolt network only)
+uniform float uGain;         // electric set: light / ink gain on colour and opacity (1 = as drawn)
 uniform vec3 uInkColor;
 uniform float uGlobalTime;
 uniform float uCharge;
@@ -461,7 +462,10 @@ void main() {
     float fSlot = floor(flickerTime * 2.0);
     float f1 = step(0.5, fract(sin(fSlot * 11.3 + flickerPhase) * 43758.5453));
     float f2 = step(0.65, fract(sin(fSlot * 7.7 + flickerPhase * 1.3) * 43758.5453)) * 0.5;
-    float flicker = (1.0 - uFlickerAmount) + uFlickerAmount * max(f1, f2);
+    // A set drawn brighter (uGain > 1) flickers that much less deep: more light, the same
+    // flash budget (round 7, corona; the flash gate's area rule is what this keeps).
+    float flickerDepth = uFlickerAmount / max(uGain, 1.0);
+    float flicker = (1.0 - flickerDepth) + flickerDepth * max(f1, f2);
 
     lightning *= flicker;
 
@@ -479,7 +483,7 @@ void main() {
     vec3 color = mix(baseColor, brightColor, whiteMix);
 
     // Apply brightness and intensity (no bloom compression — matches overlay)
-    color *= min(brightness * uIntensity, 2.5);
+    color *= min(brightness * uIntensity * uGain, 2.5);
 
     // Fresnel edge glow (scaled by uGlowScale for gesture ramping)
     color += fresnel * baseColor * 0.2 * uGlowScale;
@@ -488,7 +492,7 @@ void main() {
     // ALPHA — bolt brightness drives visibility
     // Dark areas between cells are transparent — model geometry hidden
     // ═══════════════════════════════════════════════════════════════════════════════
-    float alpha = brightness * uOpacity;
+    float alpha = brightness * uOpacity * uGain;
     alpha = clamp(alpha, 0.0, 0.95);
 
     // Apply instance fade (spawn/exit + trail)
@@ -617,6 +621,7 @@ export function createInstancedElectricMaterial(options = {}) {
             uRelayFloor: { value: 0.0 },
             uInk: { value: 0 },
             uFill: { value: 0 },
+            uGain: { value: 1 },
             uInkColor: { value: new THREE.Color(0x1f4f57) },
         },
         vertexShader: VERTEX_SHADER,
