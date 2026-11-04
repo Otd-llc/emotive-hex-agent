@@ -12,5 +12,4 @@ Attribution: "Emotive Engine" is credited in this NOTICE and in the README. Emot
 trademark of Joshua Tollette; its use here is attribution of origin, not endorsement.
 
 Third-party code carried from the engine (e.g. the three.js-derived UnrealBloomPassAlpha) keeps
-its own license header; see docs/THIRD-PARTY-LICENSES.md (to be rewritten for what this build
-actually ships).
+its own license header; see docs/THIRD-PARTY-LICENSES.md.
