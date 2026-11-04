@@ -11,5 +11,6 @@ same MIT License (see LICENSE.md).
 Attribution: "Emotive Engine" is credited in this NOTICE and in the README. Emotive Engine is a
 trademark of Joshua Tollette; its use here is attribution of origin, not endorsement.
 
-Third-party code carried from the engine (e.g. the three.js-derived UnrealBloomPassAlpha) keeps
-its own license header; see docs/THIRD-PARTY-LICENSES.md.
+This build bundles no third-party code beyond the engine itself: the bloom pass and the other
+three.js-derived passes were dropped, and three.js is a peer dependency the host supplies.
+See docs/THIRD-PARTY-LICENSES.md.
